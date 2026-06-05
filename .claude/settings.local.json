@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/database\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/model\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/utils\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/viewmodel\")",
+      "Bash(git init *)"
+    ],
+    "additionalDirectories": [
+      "d:\\AllProjectCode\\APPcode\\TomatoToDo\\entry\\src\\main\\ets"
+    ]
+  }
+}
