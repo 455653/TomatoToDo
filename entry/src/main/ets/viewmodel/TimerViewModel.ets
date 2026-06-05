@@ -27,6 +27,7 @@ const LONG_BREAK_MINUTES = 15;
 /** emitter 事件 ID */
 const EVENT_CMD = 1001;
 const EVENT_NOTIFY = 1002;
+const EVENT_TICK = 1003;
 
 /** 发给 TimerService 的命令 */
 interface TimerCmd {
@@ -61,6 +62,10 @@ export class TimerViewModel {
   private pauseAccumulator: number = 0;
   /** 暂停开始时间 */
   private pauseStartTime: number = 0;
+  /** setInterval 句柄（本地倒计时） */
+  private timerId?: number;
+  /** 当前倒计时剩余秒数 */
+  private countdownSeconds: number = 0;
 
   private sessionDao: SessionDao = new SessionDao();
 
@@ -99,6 +104,10 @@ export class TimerViewModel {
 
     const secs = this.focusDurationSeconds;
     this.sendCmd('start', secs);
+    // 启动本地倒计时
+    this.countdownSeconds = secs;
+    this.emitTick(this.countdownSeconds, 'FOCUSING');
+    this.startCountdown();
   }
 
   /**
@@ -115,6 +124,8 @@ export class TimerViewModel {
     if (this.previousState === TimerState.FOCUSING) {
       this.interruptions++;
     }
+    this.clearCountdown();
+    this.emitTick(this.countdownSeconds, 'PAUSED');
     this.sendCmd('pause');
   }
 
@@ -129,6 +140,8 @@ export class TimerViewModel {
       this.pauseAccumulator += Date.now() - this.pauseStartTime;
     }
     this.state = this.previousState;
+    this.emitTick(this.countdownSeconds, this.state);
+    this.startCountdown();
     this.sendCmd('resume');
   }
 
@@ -140,6 +153,8 @@ export class TimerViewModel {
       return;
     }
     this.state = TimerState.IDLE;
+    this.clearCountdown();
+    this.countdownSeconds = 0;
     this.sendCmd('stop');
   }
 
@@ -157,7 +172,10 @@ export class TimerViewModel {
       this.writeSession(false);
     }
     this.state = TimerState.IDLE;
+    this.clearCountdown();
+    this.countdownSeconds = 0;
     this.sendCmd('stop');
+    this.emitTick(-1, 'STOPPED');
   }
 
   /**
@@ -249,13 +267,21 @@ export class TimerViewModel {
         if ((this.currentPomodoro - 1) % 4 === 0) {
           this.state = TimerState.LONG_BREAK;
           this.sendCmd('start', this.longBreakSeconds);
+          this.countdownSeconds = this.longBreakSeconds;
+          this.emitTick(this.countdownSeconds, 'LONG_BREAK');
+          this.startCountdown();
         } else {
           this.state = TimerState.SHORT_BREAK;
           this.sendCmd('start', this.shortBreakSeconds);
+          this.countdownSeconds = this.shortBreakSeconds;
+          this.emitTick(this.countdownSeconds, 'SHORT_BREAK');
+          this.startCountdown();
         }
       } else if (this.state === TimerState.SHORT_BREAK || this.state === TimerState.LONG_BREAK) {
         // 休息结束 → 归位 IDLE
         this.state = TimerState.IDLE;
+        this.clearCountdown();
+        this.countdownSeconds = 0;
       }
       // PAUSED 状态下不应触发 timeUp（服务已暂停）
     } catch (err) {
@@ -300,6 +326,41 @@ export class TimerViewModel {
     emitter.emit(
       { eventId: EVENT_CMD, priority: emitter.EventPriority.LOW },
       { data: { action: action, seconds: seconds } as TimerCmd }
+    );
+  }
+
+  /**
+   * 启动本地倒计时（setInterval 每秒递减并广播 tick）
+   */
+  private startCountdown(): void {
+    this.clearCountdown();
+    this.timerId = setInterval(() => {
+      this.countdownSeconds--;
+      this.emitTick(this.countdownSeconds, this.state);
+      if (this.countdownSeconds <= 0) {
+        this.clearCountdown();
+        this.handleTimeUp();
+      }
+    }, 1000);
+  }
+
+  /**
+   * 清除本地倒计时
+   */
+  private clearCountdown(): void {
+    if (this.timerId !== undefined) {
+      clearInterval(this.timerId);
+      this.timerId = undefined;
+    }
+  }
+
+  /**
+   * 通过 emitter 广播 tick 事件（驱动 TimerPage UI 更新）
+   */
+  private emitTick(remainSeconds: number, state: string): void {
+    emitter.emit(
+      { eventId: EVENT_TICK, priority: emitter.EventPriority.LOW },
+      { data: { remainSeconds: remainSeconds, timerState: state } }
     );
   }
 

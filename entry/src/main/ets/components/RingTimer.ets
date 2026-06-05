@@ -23,8 +23,8 @@ const COLOR_IDLE = '#E8E8E8';
 export struct RingTimer {
   /** 进度 0~1 */
   @Prop progress: number = 0;
-  /** 剩余秒数 */
-  @Prop remainSeconds: number = 0;
+  /** 剩余秒数（当此值变化时自动重绘圆环） */
+  @Prop @Watch('onPropChange') remainSeconds: number = 0;
   /** 当前状态 */
   @Prop state: TimerState = TimerState.IDLE;
   /** 当前番茄序号 */
@@ -33,6 +33,8 @@ export struct RingTimer {
   /** Canvas 渲染上下文 */
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
+  /** Canvas 是否已就绪（onReady 已触发） */
+  private canvasReady: boolean = false;
 
   build() {
     Column() {
@@ -62,6 +64,7 @@ export struct RingTimer {
         .height('100%')
         .layoutWeight(1)
         .onReady(() => {
+          this.canvasReady = true;
           this.drawRing();
         })
     }
@@ -69,6 +72,15 @@ export struct RingTimer {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .justifyContent(FlexAlign.Center)
+  }
+
+  /**
+   * @Prop 值变化时触发重绘（由 @Watch 驱动）
+   */
+  private onPropChange(): void {
+    if (this.canvasReady) {
+      this.drawRing();
+    }
   }
 
   /**
