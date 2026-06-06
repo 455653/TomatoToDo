@@ -2,6 +2,7 @@
 // 任务管理主页面 —— 两级导航：合集列表 → 合集内任务列表
 
 import { promptAction } from '@kit.ArkUI';
+import { emitter } from '@kit.BasicServicesKit';
 import { Task, Priority, TaskType } from '../model/TaskModel';
 import { Collection } from '../model/CollectionModel';
 import { TaskViewModel } from '../viewmodel/TaskViewModel';
@@ -9,6 +10,9 @@ import { CollectionViewModel, PRESET_COLORS } from '../viewmodel/CollectionViewM
 import { TaskCard } from '../components/TaskCard';
 import { AiDrawerContent } from '../components/AiDrawer';
 import { SessionDao } from '../database/SessionDao';
+
+/** 任务数据变更事件 ID（通知今日/专注页面刷新） */
+const EVENT_TASK_CHANGED = 2001;
 
 // ============================================================
 // AddTaskDialog —— 添加任务弹窗
@@ -26,6 +30,10 @@ struct AddTaskDialog {
   collectionId?: number = 0;
   /** 关闭弹窗回调（闭包捕获 dialogController，避免 this 绑定问题） */
   onDialogClose?: () => void;
+  /** 编辑模式：已有任务数据（undefined 表示新建） */
+  editingTask?: Task;
+  /** 可选合集列表（编辑模式下用于切换所属合集） */
+  collections?: Collection[];
 
   /** 输入：任务名称 */
   @State inputTitle: string = '';
@@ -37,9 +45,21 @@ struct AddTaskDialog {
   @State startDate: number = 0;
   /** 结束日期（毫秒时间戳） */
   @State endDate: number = 0;
+  /** 选中的合集 ID（编辑模式下使用） */
+  @State selectedCollectionId: number = 0;
 
   aboutToAppear(): void {
-    this.resetFields();
+    if (this.editingTask) {
+      // 编辑模式：预填所有字段
+      this.inputTitle = this.editingTask.title;
+      this.selectedPriority = this.editingTask.priority;
+      this.selectedTaskType = this.editingTask.taskType;
+      this.startDate = this.editingTask.startDate;
+      this.endDate = this.editingTask.endDate;
+      this.selectedCollectionId = this.editingTask.collectionId;
+    } else {
+      this.resetFields();
+    }
   }
 
   aboutToDisappear(): void {
@@ -50,6 +70,7 @@ struct AddTaskDialog {
     this.inputTitle = '';
     this.selectedPriority = Priority.MEDIUM;
     this.selectedTaskType = 0;
+    this.selectedCollectionId = this.collectionId ?? 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     this.startDate = today.getTime();
@@ -59,7 +80,7 @@ struct AddTaskDialog {
 
   build() {
     Column() {
-      Text(this.dialogTitle)
+      Text(this.editingTask ? '编辑任务' : (this.dialogTitle ?? '添加任务'))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor('#333333')
@@ -133,6 +154,53 @@ struct AddTaskDialog {
       .width('100%')
       .margin({ bottom: 16 })
       .alignItems(VerticalAlign.Center)
+
+      // ---- 合集选择（编辑模式下显示所有合集，新建模式下不显示） ----
+      if (this.editingTask && this.collections && this.collections.length > 0) {
+        Column() {
+          Text('所属合集')
+            .fontSize(15)
+            .fontColor('#333333')
+            .width('100%')
+            .margin({ bottom: 8 })
+          Scroll() {
+            Row({ space: 8 }) {
+              // "未分类" 选项
+              Column() {
+                Text('未分类')
+                  .fontSize(12)
+                  .fontColor(this.selectedCollectionId === 0 ? '#FFFFFF' : '#666666')
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+              }
+              .backgroundColor(this.selectedCollectionId === 0 ? '#FF6347' : '#F0F0F0')
+              .borderRadius(14)
+              .onClick(() => { this.selectedCollectionId = 0; })
+
+              ForEach(this.collections, (col: Collection) => {
+                Column() {
+                  Row() {
+                    Column()
+                      .width(8).height(8).borderRadius(4)
+                      .backgroundColor(col.color)
+                      .margin({ right: 4 })
+                    Text(col.name)
+                      .fontSize(12)
+                      .fontColor(this.selectedCollectionId === col.id ? '#FFFFFF' : '#666666')
+                  }
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                }
+                .backgroundColor(this.selectedCollectionId === col.id ? col.color : '#F0F0F0')
+                .borderRadius(14)
+                .onClick(() => { this.selectedCollectionId = col.id; })
+              })
+            }
+          }
+          .scrollBar(BarState.Off)
+          .width('100%')
+        }
+        .width('100%')
+        .margin({ bottom: 16 })
+      }
 
       // ---- 日期选择（仅阶段性任务显示） ----
       if (this.selectedTaskType === 0) {
@@ -212,7 +280,7 @@ struct AddTaskDialog {
           .backgroundColor('#F0F0F0').borderRadius(22)
           .onClick(() => { this.closeDialog(); })
         Blank().width(16)
-        Button('确认添加')
+        Button(this.editingTask ? '保存修改' : '确认添加')
           .layoutWeight(1).height(44).fontSize(16).fontColor('#FFFFFF')
           .backgroundColor('#FF6347').borderRadius(22)
           .onClick(() => { this.onConfirmClick(); })
@@ -247,14 +315,16 @@ struct AddTaskDialog {
       return;
     }
     if (this.confirmCallback) {
+      // 编辑模式下使用选择的合集ID，新建模式下使用传入的合集ID
+      const colId = this.editingTask ? this.selectedCollectionId : (this.collectionId ?? 0);
       this.confirmCallback(
         title,
         this.selectedPriority,
-        this.collectionId ?? 0,
+        colId,
         this.selectedTaskType,
-        // 习惯性任务不传日期
         this.selectedTaskType === 0 ? this.startDate : 0,
-        this.selectedTaskType === 0 ? this.endDate : 0
+        this.selectedTaskType === 0 ? this.endDate : 0,
+        this.editingTask?.id
       );
     }
     this.closeDialog();
@@ -371,7 +441,8 @@ type AddTaskCallback = (
   collectionId: number,
   taskType: number,
   startDate: number,
-  endDate: number
+  endDate: number,
+  editingTaskId?: number
 ) => void;
 
 // ============================================================
@@ -698,6 +769,11 @@ export struct TaskPage {
         await this.taskViewModel.loadTasksByCollection(this.selectedCollection.id);
         await this.syncFromViewModel();
       }
+      // 通知其他页面刷新
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: `刷新失败: ${JSON.stringify(err)}`, duration: 2000 });
     } finally {
@@ -812,27 +888,39 @@ export struct TaskPage {
   }
 
   /**
-   * 显示添加任务弹窗
+   * 显示添加/编辑任务弹窗
+   * @param editingTask 编辑时传入已有任务，新建时不传
    */
-  private showAddTaskDialog(): void {
+  private showAddTaskDialog(editingTask?: Task): void {
     const col = this.selectedCollection;
     const colName = col ? col.name : '';
     const colId = col ? col.id : 0;
+    const isEdit = editingTask !== undefined;
+
     const dialogController = new CustomDialogController({
       builder: AddTaskDialog({
         confirmCallback: (
           title: string, priority: number,
           collectionId: number, taskType: number,
-          startDate: number, endDate: number
+          startDate: number, endDate: number,
+          editingTaskId?: number
         ) => {
           dialogController.close();
-          this.onAddTaskConfirm(title, priority, collectionId, taskType, startDate, endDate);
+          if (editingTaskId !== undefined) {
+            // 编辑模式
+            this.onEditTaskConfirm(editingTaskId, title, priority, collectionId, taskType, startDate, endDate);
+          } else {
+            // 新建模式
+            this.onAddTaskConfirm(title, priority, collectionId, taskType, startDate, endDate);
+          }
         },
         onDialogClose: () => {
           dialogController.close();
         },
-        dialogTitle: colName ? `添加到「${colName}」` : '添加任务',
-        collectionId: colId,
+        dialogTitle: isEdit ? '编辑任务' : (colName ? `添加到「${colName}」` : '添加任务'),
+        collectionId: isEdit ? (editingTask!.collectionId) : colId,
+        editingTask: editingTask,
+        collections: this.collections,
       }),
       autoCancel: true,
       alignment: DialogAlignment.Bottom,
@@ -854,6 +942,10 @@ export struct TaskPage {
       await this.taskViewModel.addTask(title, priority, collectionId, taskType, startDate, endDate);
       await this.syncFromViewModel();
       promptAction.showToast({ message: '任务已添加', duration: 1500 });
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: `添加失败: ${JSON.stringify(err)}`, duration: 2000 });
     }
@@ -863,6 +955,10 @@ export struct TaskPage {
     try {
       await this.taskViewModel.toggleDone(task);
       await this.syncFromViewModel();
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: `操作失败: ${JSON.stringify(err)}`, duration: 2000 });
     }
@@ -873,13 +969,60 @@ export struct TaskPage {
       await this.taskViewModel.deleteTask(task);
       await this.syncFromViewModel();
       promptAction.showToast({ message: '任务已删除', duration: 1500 });
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: `删除失败: ${JSON.stringify(err)}`, duration: 2000 });
     }
   }
 
   private async onEdit(task: Task): Promise<void> {
-    promptAction.showToast({ message: '编辑功能即将开放', duration: 1500 });
+    this.showAddTaskDialog(task);
+  }
+
+  /**
+   * 编辑任务确认处理
+   */
+  private async onEditTaskConfirm(
+    taskId: number,
+    title: string,
+    priority: number,
+    collectionId: number,
+    taskType: number,
+    startDate: number,
+    endDate: number
+  ): Promise<void> {
+    try {
+      // 构建更新后的任务对象
+      const originalTask = this.tasks.find(t => t.id === taskId);
+      if (!originalTask) {
+        promptAction.showToast({ message: '任务不存在', duration: 1500 });
+        return;
+      }
+      const updatedTask: Task = {
+        id: taskId,
+        userId: originalTask.userId,
+        title: title,
+        done: originalTask.done,
+        priority: priority,
+        createdAt: originalTask.createdAt,
+        collectionId: collectionId,
+        taskType: taskType,
+        startDate: startDate,
+        endDate: endDate,
+      };
+      await this.taskViewModel.updateTask(updatedTask);
+      await this.syncFromViewModel();
+      promptAction.showToast({ message: '任务已更新', duration: 1500 });
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
+    } catch (err) {
+      promptAction.showToast({ message: `编辑失败: ${JSON.stringify(err)}`, duration: 2000 });
+    }
   }
 
   private getCollectionTaskCount(collectionId: number): number {

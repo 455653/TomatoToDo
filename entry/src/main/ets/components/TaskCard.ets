@@ -159,10 +159,19 @@ export struct TaskCard {
         .borderRadius(4)
         .backgroundColor(this.getPriorityColor(this.task.priority))
 
+      // 编辑按钮
+      Text('✎')
+        .fontSize(18)
+        .fontColor('#999999')
+        .margin({ left: 10 })
+        .onClick(() => {
+          this.onEdit?.();
+        })
+
       // 删除按钮（长按触发）
       Text('🗑')
         .fontSize(20)
-        .margin({ left: 12 })
+        .margin({ left: 10 })
         .onClick(() => {
           this.onDelete?.();
         })

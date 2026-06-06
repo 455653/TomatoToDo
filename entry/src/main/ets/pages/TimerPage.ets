@@ -13,6 +13,8 @@ import { AuthGuard } from '../utils/AuthGuard';
 
 /** emitter tick 事件 ID（与 TimerService 保持一致） */
 const EVENT_TICK = 1003;
+/** 任务数据变更事件 ID */
+const EVENT_TASK_CHANGED = 2001;
 
 /** tick 事件数据结构 */
 interface TickEvent {
@@ -47,6 +49,8 @@ export struct TimerPage {
 
   /** tick 事件回调引用，用于 aboutToDisappear 时解绑 */
   private tickCallback?: (eventData: emitter.EventData) => void;
+  /** 任务变更事件回调引用 */
+  private taskChangedCallback?: (eventData: emitter.EventData) => void;
 
   async aboutToAppear(): Promise<void> {
     await this.viewModel.loadTodayStats();
@@ -58,11 +62,19 @@ export struct TimerPage {
       }
     };
     emitter.on({ eventId: EVENT_TICK }, this.tickCallback);
+    // 监听任务数据变更事件
+    this.taskChangedCallback = () => {
+      this.onTaskChanged();
+    };
+    emitter.on({ eventId: EVENT_TASK_CHANGED }, this.taskChangedCallback);
   }
 
   aboutToDisappear(): void {
     if (this.tickCallback) {
       emitter.off(EVENT_TICK, this.tickCallback);
+    }
+    if (this.taskChangedCallback) {
+      emitter.off(EVENT_TASK_CHANGED, this.taskChangedCallback);
     }
   }
 
@@ -424,6 +436,37 @@ export struct TimerPage {
       promptAction.showToast({ message: '加载任务失败', duration: 1500 });
     } finally {
       this.tasksLoading = false;
+    }
+  }
+
+  /**
+   * 任务数据变更时：重载选择器列表，校验当前选中任务是否仍存在
+   */
+  private async onTaskChanged(): Promise<void> {
+    try {
+      // 只有已经加载过任务列表时才刷新（避免首次未展开选择器也查库）
+      if (this.availableTasks.length > 0 || this.tasksLoading) {
+        await this.loadAvailableTasks();
+      }
+      // 如果当前选中的任务已被删除，则清空选中状态
+      if (this.viewModel.selectedTask) {
+        const stillExists = this.availableTasks.some(
+          (item: GroupedTaskItem) => item.task.id === this.viewModel.selectedTask!.id
+        );
+        if (!stillExists) {
+          this.viewModel.selectedTask = null;
+        } else {
+          // 更新选中任务的引用（可能被编辑过）
+          const updated = this.availableTasks.find(
+            (item: GroupedTaskItem) => item.task.id === this.viewModel.selectedTask!.id
+          );
+          if (updated) {
+            this.viewModel.selectedTask = updated.task;
+          }
+        }
+      }
+    } catch (err) {
+      // 静默失败
     }
   }
 

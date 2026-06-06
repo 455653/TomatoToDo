@@ -2,8 +2,12 @@
 // 今日待办页面
 
 import { promptAction } from '@kit.ArkUI';
+import { emitter } from '@kit.BasicServicesKit';
 import { Task } from '../model/TaskModel';
 import { TodayViewModel } from '../viewmodel/TodayViewModel';
+
+/** 任务数据变更事件 ID */
+const EVENT_TASK_CHANGED = 2001;
 
 @Entry
 @Component
@@ -18,8 +22,21 @@ export struct TodayPage {
   @State completedCount: number = 0;
   @State isLoading: boolean = false;
 
+  /** 任务变更事件回调引用 */
+  private taskChangedCallback?: (eventData: emitter.EventData) => void;
+
   async aboutToAppear(): Promise<void> {
     await this.refresh();
+    this.taskChangedCallback = () => {
+      this.refresh();
+    };
+    emitter.on({ eventId: EVENT_TASK_CHANGED }, this.taskChangedCallback);
+  }
+
+  aboutToDisappear(): void {
+    if (this.taskChangedCallback) {
+      emitter.off(EVENT_TASK_CHANGED, this.taskChangedCallback);
+    }
   }
 
   build() {
