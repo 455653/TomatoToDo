@@ -8,7 +8,7 @@ type VoidCallback = () => void;
 
 /**
  * TaskCard —— 单条任务展示卡片
- * 支持左滑删除、点击切换完成、优先级色块
+ * 支持左滑删除、点击切换完成、优先级色块、合集标识
  */
 @Component
 export struct TaskCard {
@@ -21,7 +21,13 @@ export struct TaskCard {
     done: false,
     priority: Priority.MEDIUM,
     createdAt: 0,
+    collectionId: 0,
   };
+
+  /** 任务所属合集名称（可选，用于在卡片上显示合集标识） */
+  @Prop collectionName: string = '';
+  /** 任务所属合集颜色（可选，用于合集颜色小圆点） */
+  @Prop collectionColor: string = '#999999';
 
   /** 切换完成状态回调 */
   onToggle?: VoidCallback;
@@ -87,6 +93,7 @@ export struct TaskCard {
   @Builder
   buildContent() {
     Column() {
+      // 任务标题
       Text(this.task.title)
         .fontSize(16)
         .fontWeight(FontWeight.Medium)
@@ -98,11 +105,32 @@ export struct TaskCard {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
 
-      Text(`预计 ${this.task.estimatedPomodoros} 个番茄`)
-        .fontSize(12)
-        .fontColor('#999999')
-        .margin({ top: 4 })
-        .width('100%')
+      // 副标题行：番茄数 + 合集标识
+      Row() {
+        Text(`预计 ${this.task.estimatedPomodoros} 个番茄`)
+          .fontSize(12)
+          .fontColor('#999999')
+
+        // 合集标识（仅当 task.collectionId > 0 且提供了合集名称时显示）
+        if (this.collectionName.length > 0 && this.task.collectionId > 0) {
+          Text(' · ')
+            .fontSize(12)
+            .fontColor('#CCCCCC')
+
+          Text('●')
+            .fontSize(8)
+            .fontColor(this.collectionColor)
+            .margin({ right: 3 })
+
+          Text(this.collectionName)
+            .fontSize(11)
+            .fontColor('#999999')
+            .maxLines(1)
+        }
+      }
+      .width('100%')
+      .margin({ top: 4 })
+      .alignItems(VerticalAlign.Center)
     }
     .alignItems(HorizontalAlign.Start)
     .layoutWeight(1)
@@ -185,4 +213,6 @@ export struct TaskCard {
     }
     return '低';
   }
+
+
 }

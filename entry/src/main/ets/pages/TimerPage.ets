@@ -4,7 +4,9 @@
 import { promptAction } from '@kit.ArkUI';
 import { emitter } from '@kit.BasicServicesKit';
 import { Task } from '../model/TaskModel';
+import { Collection } from '../model/CollectionModel';
 import { TaskDao } from '../database/TaskDao';
+import { CollectionDao } from '../database/CollectionDao';
 import { TimerViewModel, TimerState } from '../viewmodel/TimerViewModel';
 import { RingTimer } from '../components/RingTimer';
 import { AuthGuard } from '../utils/AuthGuard';
@@ -21,6 +23,13 @@ interface TickEvent {
   timerState: string;
 }
 
+/** 按合集分组后的任务项 */
+interface GroupedTaskItem {
+  task: Task;
+  collectionName: string;
+  collectionColor: string;
+}
+
 @Entry
 @Component
 export struct TimerPage {
@@ -32,8 +41,10 @@ export struct TimerPage {
 
   /** 任务选择器展开状态 */
   @State showTaskPicker: boolean = false;
-  /** 可选任务列表 */
-  @State availableTasks: Task[] = [];
+  /** 可选任务列表（分组后的扁平列表） */
+  @State availableTasks: GroupedTaskItem[] = [];
+  /** 所有合集 */
+  @State collections: Collection[] = [];
   /** 任务列表加载中 */
   @State tasksLoading: boolean = false;
 
@@ -225,7 +236,7 @@ export struct TimerPage {
   }
 
   // ═══════════════════════════════════════════════
-  // 任务选择弹层
+  // 任务选择弹层（按合集分组显示）
   // ═══════════════════════════════════════════════
 
   @Builder
@@ -256,32 +267,11 @@ export struct TimerPage {
           .padding(20)
       } else {
         List() {
-          ForEach(this.availableTasks, (task: Task) => {
+          ForEach(this.availableTasks, (item: GroupedTaskItem, index: number) => {
             ListItem() {
-              Row() {
-                Text(task.title)
-                  .fontSize(16)
-                  .fontColor('#333333')
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .layoutWeight(1)
-
-                if (this.viewModel.selectedTask && this.viewModel.selectedTask.id === task.id) {
-                  Text('✓')
-                    .fontSize(18)
-                    .fontColor('#FF6347')
-                    .fontWeight(FontWeight.Bold)
-                }
-              }
-              .width('100%')
-              .height(48)
-              .padding({ left: 20, right: 20 })
-              .onClick(() => {
-                this.viewModel.selectedTask = task;
-                this.showTaskPicker = false;
-              })
+              this.buildPickerItem(item, index)
             }
-          }, (task: Task) => task.id.toString())
+          }, (item: GroupedTaskItem, index: number) => `${index}_${item.task.id}`)
         }
         .constraintSize({ maxHeight: 300 })
       }
@@ -303,6 +293,71 @@ export struct TimerPage {
     .align(Alignment.Center)
   }
 
+  /**
+   * 任务选择项（区分合集 header 和任务项）
+   */
+  @Builder
+  buildPickerItem(item: GroupedTaskItem, index: number) {
+    // 判断是否需要显示合集 section header
+    if (index === 0 || this.availableTasks[index - 1].collectionName !== item.collectionName) {
+      // 合集 section header
+      Column() {
+        // Header 行
+        Row() {
+          // 颜色圆点
+          Column()
+            .width(10)
+            .height(10)
+            .borderRadius(5)
+            .backgroundColor(item.collectionColor || '#999999')
+            .margin({ right: 6 })
+
+          Text(item.collectionName || '未分类')
+            .fontSize(13)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(item.collectionColor || '#999999')
+        }
+        .width('100%')
+        .height(32)
+        .padding({ left: 20, right: 20 })
+        .backgroundColor('#F8F8F8')
+        .alignItems(VerticalAlign.Center)
+
+        // 任务行
+        this.buildTaskRow(item)
+      }
+    } else {
+      // 仅任务行
+      this.buildTaskRow(item)
+    }
+  }
+
+  @Builder
+  buildTaskRow(item: GroupedTaskItem) {
+    Row() {
+      Text(item.task.title)
+        .fontSize(16)
+        .fontColor('#333333')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+
+      if (this.viewModel.selectedTask && this.viewModel.selectedTask.id === item.task.id) {
+        Text('✓')
+          .fontSize(18)
+          .fontColor('#FF6347')
+          .fontWeight(FontWeight.Bold)
+      }
+    }
+    .width('100%')
+    .height(48)
+    .padding({ left: 20, right: 20 })
+    .onClick(() => {
+      this.viewModel.selectedTask = item.task;
+      this.showTaskPicker = false;
+    })
+  }
+
   // ═══════════════════════════════════════════════
   // 业务逻辑
   // ═══════════════════════════════════════════════
@@ -322,7 +377,7 @@ export struct TimerPage {
   }
 
   /**
-   * 加载用户任务列表
+   * 加载用户任务列表，按合集分组
    */
   private async loadAvailableTasks(): Promise<void> {
     try {
@@ -331,8 +386,52 @@ export struct TimerPage {
       if (userId <= 0) {
         return;
       }
-      const dao = new TaskDao();
-      this.availableTasks = await dao.findAllByUser(userId);
+
+      // 并行加载合集和任务
+      const taskDao = new TaskDao();
+      const collectionDao = new CollectionDao();
+      const results = await Promise.all([
+        taskDao.findAllByUser(userId),
+        collectionDao.findAllByUser(userId),
+      ]);
+      const tasks: Task[] = results[0] as Task[];
+      const collections: Collection[] = results[1] as Collection[];
+      this.collections = collections;
+
+      // 构建合集名称映射
+      const collectionMap: Map<number, Collection> = new Map();
+      for (const col of collections) {
+        collectionMap.set(col.id, col);
+      }
+
+      // 按合集分组排序：先按合集创建时间排序（新在前），未分类放最后
+      const grouped: GroupedTaskItem[] = [];
+
+      // 有合集的任务
+      for (const col of collections) {
+        for (const task of tasks) {
+          if (task.collectionId === col.id) {
+            grouped.push({
+              task: task,
+              collectionName: col.name,
+              collectionColor: col.color,
+            });
+          }
+        }
+      }
+
+      // 未分类任务
+      for (const task of tasks) {
+        if (task.collectionId === 0) {
+          grouped.push({
+            task: task,
+            collectionName: '未分类',
+            collectionColor: '#999999',
+          });
+        }
+      }
+
+      this.availableTasks = grouped;
     } catch (err) {
       promptAction.showToast({ message: '加载任务失败', duration: 1500 });
     } finally {

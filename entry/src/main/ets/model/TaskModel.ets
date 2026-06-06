@@ -7,6 +7,8 @@ export interface Task {
   id: number;
   /** 所属用户 ID */
   userId: number;
+  /** 所属合集 ID，0 表示"未分类" */
+  collectionId: number;
   /** 任务标题 */
   title: string;
   /** 预估番茄数 */

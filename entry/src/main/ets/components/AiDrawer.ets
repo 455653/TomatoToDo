@@ -26,6 +26,7 @@ enum DrawerState {
  *   AiDrawerContent({
  *     onClose: () => { this.showAiDrawer = false; },
  *     onTasksAdded: () => { this.refreshTaskList(); },
+ *     collectionId: this.selectedCollection ? this.selectedCollection.id : 0,
  *   })
  * }
  *
@@ -44,6 +45,8 @@ export struct AiDrawerContent {
   onClose?: () => void;
   /** 任务已批量添加回调 */
   onTasksAdded?: () => void;
+  /** 当前合集 ID（批量添加任务时自动关联） */
+  @Prop collectionId: number = 0;
 
   // ═════════ 内部状态 ═════════
 
@@ -404,6 +407,7 @@ export struct AiDrawerContent {
 
   /**
    * 批量将子任务写入 tasks 表
+   * 如果父页面传入了 collectionId，则自动关联到对应合集
    */
   private async onBatchAdd(): Promise<void> {
     if (this.subtasks.length === 0) {
@@ -426,6 +430,7 @@ export struct AiDrawerContent {
           done: false,
           priority: Priority.MEDIUM,
           createdAt: Date.now(),
+          collectionId: this.collectionId,
         });
       }
 

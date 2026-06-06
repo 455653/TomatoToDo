@@ -15,6 +15,7 @@ export interface CreateTaskParams {
   done: boolean;
   priority: number;
   createdAt: number;
+  collectionId: number;
 }
 
 /**
@@ -36,6 +37,7 @@ export class TaskDao {
         'done': task.done ? 1 : 0,
         'priority': task.priority,
         'created_at': task.createdAt,
+        'collection_id': task.collectionId,
       };
       const rowId: number = await store.insert('tasks', valueBucket);
       return rowId;
@@ -65,6 +67,46 @@ export class TaskDao {
   }
 
   /**
+   * 查询指定合集下的任务，按优先级降序、创建时间降序排列
+   */
+  async findByCollection(collectionId: number): Promise<Task[]> {
+    try {
+      const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
+      const sql = 'SELECT * FROM tasks WHERE collection_id = ? ORDER BY priority DESC, created_at DESC';
+      const resultSet: relationalStore.ResultSet = await store.querySql(sql, [collectionId.toString()]);
+
+      const tasks: Task[] = [];
+      while (resultSet.goToNextRow()) {
+        tasks.push(this.rowToTask(resultSet));
+      }
+      resultSet.close();
+      return tasks;
+    } catch (err) {
+      throw new Error(`按合集查询任务失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * 查询未分类任务（collectionId === 0）
+   */
+  async findUncategorized(userId: number): Promise<Task[]> {
+    try {
+      const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
+      const sql = 'SELECT * FROM tasks WHERE user_id = ? AND collection_id = 0 ORDER BY priority DESC, created_at DESC';
+      const resultSet: relationalStore.ResultSet = await store.querySql(sql, [userId.toString()]);
+
+      const tasks: Task[] = [];
+      while (resultSet.goToNextRow()) {
+        tasks.push(this.rowToTask(resultSet));
+      }
+      resultSet.close();
+      return tasks;
+    } catch (err) {
+      throw new Error(`未分类任务查询失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
    * 更新一条任务的全部字段（按 id 匹配）
    */
   async update(task: Task): Promise<void> {
@@ -76,6 +118,7 @@ export class TaskDao {
         'done': task.done ? 1 : 0,
         'priority': task.priority,
         'created_at': task.createdAt,
+        'collection_id': task.collectionId,
       };
       const predicates = new relationalStore.RdbPredicates('tasks');
       predicates.equalTo('id', task.id);
@@ -128,6 +171,7 @@ export class TaskDao {
       done: rs.getLong(rs.getColumnIndex('done')) === 1,
       priority: rs.getLong(rs.getColumnIndex('priority')),
       createdAt: rs.getLong(rs.getColumnIndex('created_at')),
+      collectionId: rs.getLong(rs.getColumnIndex('collection_id')),
     };
   }
 }

@@ -50,6 +50,16 @@ const CREATE_SESSIONS_TABLE = `
   );
 `;
 
+const CREATE_COLLECTIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS collections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#FF6347',
+    created_at INTEGER
+  );
+`;
+
 /**
  * DbHelper —— 单例模式
  * 使用前必须先调用 init(context) 传入应用上下文
@@ -107,7 +117,16 @@ export class DbHelper {
     try {
       await this.rdbStore.executeSql(CREATE_USERS_TABLE);
       await this.rdbStore.executeSql(CREATE_TASKS_TABLE);
+      // 兼容老数据库升级：尝试新增 collection_id 列，如果已存在则忽略报错
+      try {
+        await this.rdbStore.executeSql(
+          'ALTER TABLE tasks ADD COLUMN collection_id INTEGER DEFAULT 0'
+        );
+      } catch (_err) {
+        // 列已存在或其他 ALTER 错误，忽略继续
+      }
       await this.rdbStore.executeSql(CREATE_SESSIONS_TABLE);
+      await this.rdbStore.executeSql(CREATE_COLLECTIONS_TABLE);
     } catch (err) {
       throw new Error(`建表失败: ${JSON.stringify(err)}`);
     }
