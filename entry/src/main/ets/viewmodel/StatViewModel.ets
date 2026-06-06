@@ -11,18 +11,18 @@ import { AuthGuard } from '../utils/AuthGuard';
 /** 24 小时毫秒数 */
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** 每日番茄数据（供折线图使用） */
+/** 每日专注数据（供折线图使用） */
 export interface DayData {
   /** 日期字符串 "MM-DD" */
   date: string;
-  /** 该日完成番茄数 */
-  count: number;
+  /** 该日专注总分钟数 */
+  minutes: number;
 }
 
 @ObservedV2
 export class StatViewModel {
   // ═════════ 今日 ═════════
-  @Trace todayPomodoros: number = 0;
+  @Trace todayFocusCount: number = 0;
   @Trace todayMinutes: number = 0;
   @Trace todayDoneTasks: number = 0;
 
@@ -33,7 +33,7 @@ export class StatViewModel {
   @Trace monthHeatmap: Map<string, number> = new Map();
 
   // ═════════ 累计 ═════════
-  @Trace totalPomodoros: number = 0;
+  @Trace totalFocusCount: number = 0;
   @Trace totalHours: number = 0;
   @Trace streakDays: number = 0;
 
@@ -85,7 +85,7 @@ export class StatViewModel {
       }
     }
 
-    this.todayPomodoros = todaySessions.length;
+    this.todayFocusCount = todaySessions.length;
 
     let totalSecs = 0;
     for (const s of todaySessions) {
@@ -114,23 +114,23 @@ export class StatViewModel {
     for (let i = 0; i < 7; i++) {
       const dayStart = mondayMs + i * DAY_MS;
       const dayEnd = dayStart + DAY_MS;
-      let count = 0;
+      let dayMinutes = 0;
       for (const s of completed) {
         if (s.startTime >= dayStart && s.startTime < dayEnd) {
-          count++;
+          dayMinutes += Math.floor(s.durationSeconds / 60);
         }
       }
       const d = new Date(dayStart);
       const month = d.getMonth() + 1;
       const dateNum = d.getDate();
       const dateStr = `${month.toString().padStart(2, '0')}-${dateNum.toString().padStart(2, '0')}`;
-      result.push({ date: dateStr, count: count });
+      result.push({ date: dateStr, minutes: dayMinutes });
     }
     return result;
   }
 
   // ═══════════════════════════════════════════════
-  // 热力图（全部日期 → Map<"YYYY-MM-DD", count>）
+  // 热力图（全部日期 → Map<"YYYY-MM-DD", minutes>）
   // ═══════════════════════════════════════════════
 
   private calcMonthHeatmap(completed: Session[]): Map<string, number> {
@@ -142,7 +142,7 @@ export class StatViewModel {
         `${(d.getMonth() + 1).toString().padStart(2, '0')}-` +
         `${d.getDate().toString().padStart(2, '0')}`;
       const prev = map.get(key) ?? 0;
-      map.set(key, prev + 1);
+      map.set(key, prev + Math.floor(s.durationSeconds / 60));
     }
     return map;
   }
@@ -152,7 +152,7 @@ export class StatViewModel {
   // ═══════════════════════════════════════════════
 
   private calcTotal(completed: Session[]): void {
-    this.totalPomodoros = completed.length;
+    this.totalFocusCount = completed.length;
 
     let totalSecs = 0;
     for (const s of completed) {

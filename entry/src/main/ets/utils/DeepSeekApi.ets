@@ -24,8 +24,8 @@ const KEY_API_KEY = 'dsApiKey';
 /** 系统提示词 —— 限制 JSON 输出格式 */
 const SYSTEM_PROMPT =
   '你是任务规划助手。用户输入一个目标，你将其拆解为3-6个具体子任务。' +
-  '只返回 JSON 数组，格式：[{"title":"任务名","estimatedPomodoros":数字}]，' +
-  '数字范围1-4，不要有任何其他文字。';
+  '只返回 JSON 数组，格式：[{"title":"任务名"}]，' +
+  '不要有任何其他文字。';
 
 // ═══════════════════════════════════════════════
 // 类型定义
@@ -35,8 +35,6 @@ const SYSTEM_PROMPT =
 export interface SubTask {
   /** 任务名称 */
   title: string;
-  /** 预估番茄数 1~4 */
-  estimatedPomodoros: number;
 }
 
 /** DeepSeek API 响应中单条选项 */
@@ -193,14 +191,7 @@ export class DeepSeekApi {
         if (title.length === 0) {
           continue; // 跳过空标题项
         }
-        let pomo: number = 1;
-        if (typeof st.estimatedPomodoros === 'number' && st.estimatedPomodoros >= 1) {
-          pomo = st.estimatedPomodoros;
-        }
-        if (pomo > 4) {
-          pomo = 4;
-        }
-        result.push({ title: title, estimatedPomodoros: pomo });
+        result.push({ title: title });
       }
 
       if (result.length === 0) {

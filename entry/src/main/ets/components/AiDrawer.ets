@@ -307,50 +307,6 @@ export struct AiDrawerContent {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-
-      // 番茄数 Stepper
-      Row() {
-        Text('番茄数')
-          .fontSize(13)
-          .fontColor('#999999')
-
-        Blank()
-
-        Row({ space: 8 }) {
-          Text('−')
-            .fontSize(18)
-            .fontColor(st.estimatedPomodoros <= 1 ? '#CCCCCC' : '#7C4DFF')
-            .width(30)
-            .height(30)
-            .textAlign(TextAlign.Center)
-            .onClick(() => {
-              if (st.estimatedPomodoros > 1) {
-                this.updateSubtaskPomo(idx, st.estimatedPomodoros - 1);
-              }
-            })
-
-          Text(st.estimatedPomodoros.toString())
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#333333')
-            .width(24)
-            .textAlign(TextAlign.Center)
-
-          Text('+')
-            .fontSize(18)
-            .fontColor(st.estimatedPomodoros >= 4 ? '#CCCCCC' : '#7C4DFF')
-            .width(30)
-            .height(30)
-            .textAlign(TextAlign.Center)
-            .onClick(() => {
-              if (st.estimatedPomodoros < 4) {
-                this.updateSubtaskPomo(idx, st.estimatedPomodoros + 1);
-              }
-            })
-        }
-      }
-      .width('100%')
-      .margin({ top: 4 })
     }
     .width('100%')
     .padding(12)
@@ -426,7 +382,6 @@ export struct AiDrawerContent {
         await dao.insert({
           userId: userId,
           title: st.title,
-          estimatedPomodoros: st.estimatedPomodoros,
           done: false,
           priority: Priority.MEDIUM,
           createdAt: Date.now(),
@@ -460,28 +415,6 @@ export struct AiDrawerContent {
       if (i === index) {
         newList.push({
           title: newTitle,
-          estimatedPomodoros: this.subtasks[i].estimatedPomodoros,
-        });
-      } else {
-        newList.push(this.subtasks[i]);
-      }
-    }
-    this.subtasks = newList;
-  }
-
-  /**
-   * 更新子任务番茄数
-   */
-  private updateSubtaskPomo(index: number, newPomo: number): void {
-    if (newPomo < 1 || newPomo > 4) {
-      return;
-    }
-    const newList: SubTask[] = [];
-    for (let i = 0; i < this.subtasks.length; i++) {
-      if (i === index) {
-        newList.push({
-          title: this.subtasks[i].title,
-          estimatedPomodoros: newPomo,
         });
       } else {
         newList.push(this.subtasks[i]);

@@ -11,14 +11,13 @@ import { Task } from '../model/TaskModel';
 export interface CreateTaskParams {
   userId: number;
   title: string;
-  estimatedPomodoros: number;
   done: boolean;
   priority: number;
   createdAt: number;
   collectionId: number;
-  taskType: number;      // 新增
-  startDate: number;     // 新增
-  endDate: number;       // 新增
+  taskType: number;
+  startDate: number;
+  endDate: number;
 }
 
 /**
@@ -36,7 +35,6 @@ export class TaskDao {
       const valueBucket: relationalStore.ValuesBucket = {
         'user_id': task.userId,
         'title': task.title,
-        'estimated_pomodoros': task.estimatedPomodoros,
         'done': task.done ? 1 : 0,
         'priority': task.priority,
         'created_at': task.createdAt,
@@ -120,7 +118,6 @@ export class TaskDao {
       const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
       const valueBucket: relationalStore.ValuesBucket = {
         'title': task.title,
-        'estimated_pomodoros': task.estimatedPomodoros,
         'done': task.done ? 1 : 0,
         'priority': task.priority,
         'created_at': task.createdAt,
@@ -176,7 +173,6 @@ export class TaskDao {
       id: rs.getLong(rs.getColumnIndex('id')),
       userId: rs.getLong(rs.getColumnIndex('user_id')),
       title: rs.getString(rs.getColumnIndex('title')),
-      estimatedPomodoros: rs.getLong(rs.getColumnIndex('estimated_pomodoros')),
       done: rs.getLong(rs.getColumnIndex('done')) === 1,
       priority: rs.getLong(rs.getColumnIndex('priority')),
       createdAt: rs.getLong(rs.getColumnIndex('created_at')),

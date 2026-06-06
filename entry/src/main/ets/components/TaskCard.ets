@@ -17,7 +17,6 @@ export struct TaskCard {
     id: 0,
     userId: 0,
     title: '',
-    estimatedPomodoros: 1,
     done: false,
     priority: Priority.MEDIUM,
     createdAt: 0,
@@ -31,6 +30,8 @@ export struct TaskCard {
   @Prop collectionName: string = '';
   /** 任务所属合集颜色（可选，用于合集颜色小圆点） */
   @Prop collectionColor: string = '#999999';
+  /** 该任务累积专注分钟数 */
+  @Prop focusMinutes: number = 0;
 
   /** 切换完成状态回调 */
   onToggle?: VoidCallback;
@@ -108,23 +109,25 @@ export struct TaskCard {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
 
-      // 副标题行：番茄数 + 合集标识
+      // 副标题行：专注时长 + 合集标识
       Row() {
-        Text(`预计 ${this.task.estimatedPomodoros} 个番茄`)
-          .fontSize(12)
-          .fontColor('#999999')
-
-        // 合集标识（仅当 task.collectionId > 0 且提供了合集名称时显示）
-        if (this.collectionName.length > 0 && this.task.collectionId > 0) {
-          Text(' · ')
+        if (this.focusMinutes > 0) {
+          Text(`已专注 ${this.focusMinutes} 分钟`)
             .fontSize(12)
-            .fontColor('#CCCCCC')
+            .fontColor('#999999')
+        }
 
+        // 合集标识
+        if (this.collectionName.length > 0 && this.task.collectionId > 0) {
+          if (this.focusMinutes > 0) {
+            Text(' · ')
+              .fontSize(12)
+              .fontColor('#CCCCCC')
+          }
           Text('●')
             .fontSize(8)
             .fontColor(this.collectionColor)
             .margin({ right: 3 })
-
           Text(this.collectionName)
             .fontSize(11)
             .fontColor('#999999')

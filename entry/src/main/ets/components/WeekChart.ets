@@ -1,6 +1,6 @@
 // ===== components/WeekChart.ets =====
 // 本周折线图 —— Canvas 绘制
-// X 轴：周一~周日（中文缩写），Y 轴：番茄数量自动适配
+// X 轴：周一~周日（中文缩写），Y 轴：分钟数自动适配
 
 import { DayData } from '../viewmodel/StatViewModel';
 
@@ -29,7 +29,7 @@ interface Point2D {
 }
 
 /**
- * WeekChart —— 本周番茄数折线图
+ * WeekChart —— 本周专注分钟数折线图
  */
 @Component
 export struct WeekChart {
@@ -91,8 +91,8 @@ export struct WeekChart {
   private getYMax(): number {
     let max = 0;
     for (const d of this.data) {
-      if (d.count > max) {
-        max = d.count;
+      if (d.minutes > max) {
+        max = d.minutes;
       }
     }
     if (max === 0) {
@@ -161,7 +161,7 @@ export struct WeekChart {
     // 计算各点坐标
     const points: Point2D[] = [];
     for (let i = 0; i < count; i++) {
-      const val = this.data[i].count;
+      const val = this.data[i].minutes;
       const x = startX + i * stepX;
       const y = TOP_PAD + chartH - (maxVal > 0 ? (val / maxVal) * chartH : 0);
       points.push({ x: x, y: y, val: val });

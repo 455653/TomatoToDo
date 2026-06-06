@@ -11,9 +11,6 @@ import { TimerViewModel, TimerState } from '../viewmodel/TimerViewModel';
 import { RingTimer } from '../components/RingTimer';
 import { AuthGuard } from '../utils/AuthGuard';
 
-/** 默认专注分钟数 */
-const FOCUS_MINUTES = 25;
-
 /** emitter tick 事件 ID（与 TimerService 保持一致） */
 const EVENT_TICK = 1003;
 
@@ -33,8 +30,8 @@ interface GroupedTaskItem {
 @Entry
 @Component
 export struct TimerPage {
-  /** 剩余秒数，由 TimerService 通过 emitter 事件驱动 */
-  @State remainSeconds: number = FOCUS_MINUTES * 60;
+  /** 剩余秒数，由 TimerService 通过 emitter 事件驱动（正向计时从0开始） */
+  @State remainSeconds: number = 0;
 
   /** 计时器 ViewModel */
   private viewModel: TimerViewModel = new TimerViewModel();
@@ -145,7 +142,7 @@ export struct TimerPage {
         progress: this.viewModel.getProgress(this.remainSeconds, this.viewModel.state),
         remainSeconds: this.remainSeconds,
         state: this.viewModel.state,
-        pomodoroIndex: this.viewModel.currentPomodoro,
+        todayFocusMinutes: this.viewModel.todayFocusMinutes,
       })
     }
     .width('100%')
@@ -161,34 +158,25 @@ export struct TimerPage {
   buildButtonGroup() {
     Column() {
       if (this.viewModel.state === TimerState.IDLE) {
-        this.buildPrimaryButton('开 始', '#FF6347', () => {
-          this.onStart();
-        })
+        Row({ space: 20 }) {
+          this.buildSecondaryButton('休 息', '#4CAF50', () => { this.onStartRest(); })
+          this.buildSecondaryButton('开始专注', '#FF6347', () => { this.onStart(); })
+        }
+        .justifyContent(FlexAlign.Center)
       } else if (this.viewModel.state === TimerState.FOCUSING) {
         Row({ space: 20 }) {
-          this.buildSecondaryButton('暂 停', '#FF9800', () => {
-            this.onPause();
-          })
-          this.buildSecondaryButton('放 弃', '#999999', () => {
-            this.onStop();
-          })
+          this.buildSecondaryButton('暂 停', '#FF9800', () => { this.onPause(); })
+          this.buildSecondaryButton('结 束', '#999999', () => { this.onStop(); })
         }
         .justifyContent(FlexAlign.Center)
       } else if (this.viewModel.state === TimerState.PAUSED) {
         Row({ space: 20 }) {
-          this.buildSecondaryButton('继 续', '#4CAF50', () => {
-            this.onResume();
-          })
-          this.buildSecondaryButton('放 弃', '#999999', () => {
-            this.onStop();
-          })
+          this.buildSecondaryButton('继 续', '#4CAF50', () => { this.onResume(); })
+          this.buildSecondaryButton('结 束', '#999999', () => { this.onStop(); })
         }
         .justifyContent(FlexAlign.Center)
-      } else if (this.viewModel.state === TimerState.SHORT_BREAK ||
-        this.viewModel.state === TimerState.LONG_BREAK) {
-        this.buildPrimaryButton('跳过休息', '#4CAF50', () => {
-          this.onSkip();
-        })
+      } else if (this.viewModel.state === TimerState.RESTING) {
+        this.buildPrimaryButton('跳过休息', '#4CAF50', () => { this.onSkipRest(); })
       }
     }
     .width('100%')
@@ -227,7 +215,7 @@ export struct TimerPage {
 
   @Builder
   buildStats() {
-    Text(`今日已完成 ${this.viewModel.todayPomodoros} 个番茄，共 ${this.viewModel.todayMinutes} 分钟`)
+    Text(`今日已专注 ${this.viewModel.todayFocusCount} 次，共 ${this.viewModel.todayFocusMinutes} 分钟`)
       .fontSize(13)
       .fontColor('#999999')
       .margin({ top: 24 })
@@ -440,10 +428,28 @@ export struct TimerPage {
   }
 
   /**
-   * 开始专注
+   * 开始专注（需先选择任务）
    */
   private onStart(): void {
+    if (!this.viewModel.selectedTask) {
+      promptAction.showToast({ message: '请先选择一个任务', duration: 1500 });
+      return;
+    }
     this.viewModel.start();
+  }
+
+  /**
+   * 开始休息
+   */
+  private onStartRest(): void {
+    this.viewModel.startRest();
+  }
+
+  /**
+   * 跳过休息
+   */
+  private onSkipRest(): void {
+    this.viewModel.skipRest();
   }
 
   /**
@@ -461,17 +467,9 @@ export struct TimerPage {
   }
 
   /**
-   * 跳过休息
-   */
-  private onSkip(): void {
-    this.viewModel.skip();
-  }
-
-  /**
-   * 放弃
+   * 结束专注
    */
   private async onStop(): Promise<void> {
-    this.viewModel.stop();
-    await this.viewModel.loadTodayStats();
+    await this.viewModel.stop();
   }
 }

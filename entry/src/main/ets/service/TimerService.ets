@@ -54,8 +54,10 @@ interface TickEvent {
 export default class TimerService extends AppServiceExtensionAbility {
   /** setInterval 句柄 */
   private timerId?: number;
-  /** 剩余秒数 */
+  /** 剩余秒数（正向模式递增，倒计时递减） */
   private remainSeconds: number = 0;
+  /** 是否为正向计时模式（专注） */
+  private isForward: boolean = false;
 
   /**
    * 服务创建：注册通知频道、监听 emitter 命令
@@ -90,31 +92,47 @@ export default class TimerService extends AppServiceExtensionAbility {
   }
 
   /**
-   * 启动倒计时
+   * 启动计时
+   * - seconds <= 0：正向计时（专注模式，无自动结束）
+   * - seconds > 0：倒计时（休息模式，结束后发送 timeUp）
    */
   startTimer(seconds: number): void {
-    if (seconds <= 0) {
-      return;
-    }
     // 清除旧定时器
     this.clearTimer();
-    this.remainSeconds = seconds;
 
-    // 发送前台通知
-    this.showNotification('专注中...', '番茄钟倒计时进行中');
+    if (seconds <= 0) {
+      // 正向计时模式（专注）
+      this.isForward = true;
+      this.remainSeconds = 0;
+      this.showNotification('专注中...', '番茄钟正向计时进行中');
 
-    // 通过 emitter 广播初始 tick
-    this.emitTick(this.remainSeconds, 'FOCUSING');
-
-    // 每秒 tick
-    this.timerId = setInterval(() => {
-      this.remainSeconds--;
+      // 通过 emitter 广播初始 tick
       this.emitTick(this.remainSeconds, 'FOCUSING');
 
-      if (this.remainSeconds <= 0) {
-        this.onTimerEnd();
-      }
-    }, 1000);
+      // 每秒递增，永不自动结束
+      this.timerId = setInterval(() => {
+        this.remainSeconds++;
+        this.emitTick(this.remainSeconds, 'FOCUSING');
+      }, 1000);
+    } else {
+      // 倒计时模式（休息）
+      this.isForward = false;
+      this.remainSeconds = seconds;
+      this.showNotification('休息中...', '番茄钟休息倒计时');
+
+      // 通过 emitter 广播初始 tick
+      this.emitTick(this.remainSeconds, 'RESTING');
+
+      // 每秒递减，归零时通知 ViewModel
+      this.timerId = setInterval(() => {
+        this.remainSeconds--;
+        this.emitTick(this.remainSeconds, 'RESTING');
+
+        if (this.remainSeconds <= 0) {
+          this.onTimerEnd();
+        }
+      }, 1000);
+    }
   }
 
   /**
@@ -130,20 +148,32 @@ export default class TimerService extends AppServiceExtensionAbility {
    * 恢复计时
    */
   resumeTimer(): void {
-    if (this.remainSeconds <= 0) {
-      return;
-    }
-    this.emitTick(this.remainSeconds, 'FOCUSING');
-    this.showNotification('专注中...', '番茄钟倒计时进行中');
-
-    this.timerId = setInterval(() => {
-      this.remainSeconds--;
+    if (this.isForward) {
+      // 恢复正向计时（专注）
       this.emitTick(this.remainSeconds, 'FOCUSING');
+      this.showNotification('专注中...', '番茄钟正向计时进行中');
 
+      this.timerId = setInterval(() => {
+        this.remainSeconds++;
+        this.emitTick(this.remainSeconds, 'FOCUSING');
+      }, 1000);
+    } else {
+      // 恢复倒计时（休息）
       if (this.remainSeconds <= 0) {
-        this.onTimerEnd();
+        return;
       }
-    }, 1000);
+      this.emitTick(this.remainSeconds, 'RESTING');
+      this.showNotification('休息中...', '番茄钟休息倒计时');
+
+      this.timerId = setInterval(() => {
+        this.remainSeconds--;
+        this.emitTick(this.remainSeconds, 'RESTING');
+
+        if (this.remainSeconds <= 0) {
+          this.onTimerEnd();
+        }
+      }, 1000);
+    }
   }
 
   /**
@@ -152,6 +182,7 @@ export default class TimerService extends AppServiceExtensionAbility {
   stopTimer(): void {
     this.clearTimer();
     this.remainSeconds = 0;
+    this.isForward = false;
     this.emitTick(-1, 'STOPPED');
     this.cancelNotification();
   }

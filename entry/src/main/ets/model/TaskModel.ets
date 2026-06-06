@@ -11,8 +11,6 @@ export interface Task {
   collectionId: number;
   /** 任务标题 */
   title: string;
-  /** 预估番茄数 */
-  estimatedPomodoros: number;
   /** 是否已完成 */
   done: boolean;
   /** 优先级 */

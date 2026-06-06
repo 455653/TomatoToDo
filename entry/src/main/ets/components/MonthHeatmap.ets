@@ -1,6 +1,6 @@
 // ===== components/MonthHeatmap.ets =====
-// 月度番茄热力图 —— 按周排列的小方块网格
-// 颜色深浅代表当日番茄数：0=灰，1=浅红，2~3=中红，4+=深红
+// 月度专注热力图 —— 按周排列的小方块网格
+// 颜色深浅代表当日专注分钟数：0=灰，1-30=浅红，31-60=中红，61-120=较深红，120+=深红
 
 import { promptAction } from '@kit.ArkUI';
 
@@ -13,6 +13,7 @@ const CELL_STEP = CELL_SIZE + CELL_GAP;
 const COLOR_EMPTY = '#F0F0F0';
 const COLOR_LIGHT = '#FFCDD2';
 const COLOR_MID = '#EF9A9A';
+const COLOR_DEEP = '#E57373';
 const COLOR_DARK = '#E53935';
 
 /** 星期表头 */
@@ -22,7 +23,7 @@ const WEEK_HEADERS: string[] = ['一', '二', '三', '四', '五', '六', '日']
 interface CellInfo {
   /** 日期（1~31），0 表示空白占位 */
   day: number;
-  /** 当日番茄数 */
+  /** 当日专注分钟数 */
   count: number;
 }
 
@@ -83,11 +84,14 @@ export struct MonthHeatmap {
     if (count <= 0) {
       return COLOR_EMPTY;
     }
-    if (count === 1) {
+    if (count <= 30) {
       return COLOR_LIGHT;
     }
-    if (count <= 3) {
+    if (count <= 60) {
       return COLOR_MID;
+    }
+    if (count <= 120) {
+      return COLOR_DEEP;
     }
     return COLOR_DARK;
   }
@@ -115,7 +119,7 @@ export struct MonthHeatmap {
     if (day <= 0) {
       return;
     }
-    const msg = `${this.getMonthName()}${day}日：${count}个番茄`;
+    const msg = `${this.getMonthName()}${day}日：${count}分钟`;
     promptAction.showToast({ message: msg, duration: 1500 });
   }
 

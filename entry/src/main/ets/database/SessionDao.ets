@@ -102,6 +102,25 @@ export class SessionDao {
   }
 
   /**
+   * 统计指定任务的总专注时长（秒），仅统计已完成的会话
+   */
+  async sumDurationByTaskId(taskId: number): Promise<number> {
+    try {
+      const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
+      const sql = 'SELECT SUM(duration_seconds) AS total FROM sessions WHERE task_id = ? AND completed = 1';
+      const rs: relationalStore.ResultSet = await store.querySql(sql, [taskId.toString()]);
+      let total = 0;
+      if (rs.goToFirstRow()) {
+        total = rs.getLong(rs.getColumnIndex('total'));
+      }
+      rs.close();
+      return total;
+    } catch (err) {
+      throw new Error(`统计任务时长失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
    * 计算今日 00:00:00 的时间戳（毫秒）
    */
   private getTodayStartMs(): number {

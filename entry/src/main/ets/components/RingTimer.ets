@@ -27,8 +27,8 @@ export struct RingTimer {
   @Prop @Watch('onPropChange') remainSeconds: number = 0;
   /** 当前状态 */
   @Prop state: TimerState = TimerState.IDLE;
-  /** 当前番茄序号 */
-  @Prop pomodoroIndex: number = 1;
+  /** 今日已累计专注分钟数 */
+  @Prop todayFocusMinutes: number = 0;
 
   /** Canvas 渲染上下文 */
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
@@ -38,18 +38,21 @@ export struct RingTimer {
 
   build() {
     Column() {
-      // "第 N 个番茄"
-      if (this.state === TimerState.FOCUSING ||
-        this.state === TimerState.PAUSED) {
-        Text(`第 ${this.pomodoroIndex} 个番茄`)
+      // 圆环上方状态文字
+      if (this.state === TimerState.FOCUSING) {
+        Text('专注中')
           .fontSize(14)
-          .fontColor('#999999')
+          .fontColor('#FF6347')
           .margin({ bottom: 8 })
-      } else if (this.state === TimerState.SHORT_BREAK ||
-        this.state === TimerState.LONG_BREAK) {
-        Text('休息一下')
+      } else if (this.state === TimerState.PAUSED) {
+        Text('已暂停')
           .fontSize(14)
-          .fontColor('#999999')
+          .fontColor('#FF9800')
+          .margin({ bottom: 8 })
+      } else if (this.state === TimerState.RESTING) {
+        Text('休息中')
+          .fontSize(14)
+          .fontColor('#4CAF50')
           .margin({ bottom: 8 })
       } else {
         Text('准备开始')
@@ -112,19 +115,19 @@ export struct RingTimer {
     const endAngle = startAngle + sweepAngle;
     this.drawArc(centerX, centerY, arcRadius, startAngle, endAngle, progressColor);
 
-    // 3. 中心文字：MM:SS
+    // 3. 中心文字：MM:SS（正向走时）
     const timeStr = this.formatTime(this.remainSeconds);
     this.ctx.font = 'bold 48px sans-serif';
     this.ctx.fillStyle = '#333333';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.fillText(timeStr, centerX, centerY);
+    this.ctx.fillText(timeStr, centerX, centerY - 16);
 
-    // 4. 中心下方：状态文字
-    const statusText = this.getStatusText();
-    this.ctx.font = '14px sans-serif';
+    // 4. 中心下方：今日已累计专注
+    this.ctx.font = '13px sans-serif';
     this.ctx.fillStyle = '#999999';
-    this.ctx.fillText(statusText, centerX, centerY + 36);
+    const todayText = `今日已专注 ${this.todayFocusMinutes} 分钟`;
+    this.ctx.fillText(todayText, centerX, centerY + 30);
   }
 
   /**
@@ -147,32 +150,16 @@ export struct RingTimer {
    * 获取当前状态对应的圆弧颜色
    */
   private getArcColor(): string {
-    if (this.state === TimerState.FOCUSING || this.state === TimerState.IDLE) {
-      return COLOR_FOCUS;
-    } else if (this.state === TimerState.SHORT_BREAK || this.state === TimerState.LONG_BREAK) {
-      return COLOR_BREAK;
-    } else if (this.state === TimerState.PAUSED) {
-      return COLOR_PAUSE;
+    if (this.state === TimerState.FOCUSING) {
+      return '#FF6347';
     }
-    return COLOR_IDLE;
-  }
-
-  /**
-   * 获取状态描述文字
-   */
-  private getStatusText(): string {
-    switch (this.state) {
-      case TimerState.FOCUSING:
-        return '专注中';
-      case TimerState.SHORT_BREAK:
-        return '短休息';
-      case TimerState.LONG_BREAK:
-        return '长休息';
-      case TimerState.PAUSED:
-        return '已暂停';
-      default:
-        return '点击开始';
+    if (this.state === TimerState.RESTING) {
+      return '#4CAF50';
     }
+    if (this.state === TimerState.PAUSED) {
+      return '#FF9800';
+    }
+    return '#E8E8E8';
   }
 
   /**

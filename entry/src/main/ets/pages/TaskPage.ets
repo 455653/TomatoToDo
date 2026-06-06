@@ -8,6 +8,7 @@ import { TaskViewModel } from '../viewmodel/TaskViewModel';
 import { CollectionViewModel, PRESET_COLORS } from '../viewmodel/CollectionViewModel';
 import { TaskCard } from '../components/TaskCard';
 import { AiDrawerContent } from '../components/AiDrawer';
+import { SessionDao } from '../database/SessionDao';
 
 // ============================================================
 // AddTaskDialog —— 添加任务弹窗
@@ -28,8 +29,6 @@ struct AddTaskDialog {
 
   /** 输入：任务名称 */
   @State inputTitle: string = '';
-  /** 输入：番茄数 1-8 */
-  @State pomodoroCount: number = 1;
   /** 输入：优先级 */
   @State selectedPriority: number = Priority.MEDIUM;
   /** 任务类型：0=阶段性, 1=习惯性 */
@@ -49,7 +48,6 @@ struct AddTaskDialog {
 
   resetFields(): void {
     this.inputTitle = '';
-    this.pomodoroCount = 1;
     this.selectedPriority = Priority.MEDIUM;
     this.selectedTaskType = 0;
     const today = new Date();
@@ -80,27 +78,6 @@ struct AddTaskDialog {
         .onChange((value: string) => {
           this.inputTitle = value;
         })
-
-      Row() {
-        Text('番茄数').fontSize(15).fontColor('#333333')
-        Blank()
-        Row() {
-          Button('-')
-            .width(36).height(36).fontSize(18).fontColor('#FFFFFF')
-            .backgroundColor(this.pomodoroCount <= 1 ? '#CCCCCC' : '#FF6347')
-            .borderRadius(4).enabled(this.pomodoroCount > 1)
-            .onClick(() => { if (this.pomodoroCount > 1) { this.pomodoroCount--; } })
-          Text(this.pomodoroCount.toString())
-            .fontSize(18).fontWeight(FontWeight.Bold).fontColor('#333333')
-            .width(40).textAlign(TextAlign.Center)
-          Button('+')
-            .width(36).height(36).fontSize(18).fontColor('#FFFFFF')
-            .backgroundColor(this.pomodoroCount >= 8 ? '#CCCCCC' : '#FF6347')
-            .borderRadius(4).enabled(this.pomodoroCount < 8)
-            .onClick(() => { if (this.pomodoroCount < 8) { this.pomodoroCount++; } })
-        }
-      }
-      .width('100%').margin({ bottom: 16 }).alignItems(VerticalAlign.Center)
 
       Row() {
         Text('优先级').fontSize(15).fontColor('#333333')
@@ -272,7 +249,6 @@ struct AddTaskDialog {
     if (this.confirmCallback) {
       this.confirmCallback(
         title,
-        this.pomodoroCount,
         this.selectedPriority,
         this.collectionId ?? 0,
         this.selectedTaskType,
@@ -391,7 +367,6 @@ struct AddCollectionDialog {
 
 type AddTaskCallback = (
   title: string,
-  pomodoros: number,
   priority: number,
   collectionId: number,
   taskType: number,
@@ -415,6 +390,8 @@ export struct TaskPage {
   @State todayDoneCount: number = 0;
   @State isLoading: boolean = false;
   @State showAiDrawer: boolean = false;
+  /** 任务专注时长映射 taskId -> 总专注分钟 */
+  @State taskFocusMap: Map<number, number> = new Map();
 
   /** 当前选中的合集（null = 合集列表视图） */
   @State selectedCollection: Collection | null = null;
@@ -655,6 +632,7 @@ export struct TaskPage {
           task: task,
           collectionName: this.getCollectionNameForTask(task),
           collectionColor: this.getCollectionColorForTask(task),
+          focusMinutes: this.taskFocusMap.get(task.id) ?? 0,
           onToggle: () => { this.onToggle(task); },
           onDelete: () => { this.onDelete(task); },
           onEdit: () => { this.onEdit(task); },
@@ -684,7 +662,7 @@ export struct TaskPage {
       this.isLoading = true;
       await this.collectionViewModel.loadCollections();
       await this.taskViewModel.loadTasks();
-      this.syncFromViewModel();
+      await this.syncFromViewModel();
       this.collections = [...this.collectionViewModel.collections];
     } catch (err) {
       promptAction.showToast({ message: `加载失败: ${JSON.stringify(err)}`, duration: 2000 });
@@ -698,7 +676,7 @@ export struct TaskPage {
       this.isLoading = true;
       this.selectedCollection = col;
       await this.taskViewModel.loadTasksByCollection(col.id);
-      this.syncFromViewModel();
+      await this.syncFromViewModel();
     } catch (err) {
       promptAction.showToast({ message: `加载失败: ${JSON.stringify(err)}`, duration: 2000 });
     } finally {
@@ -718,7 +696,7 @@ export struct TaskPage {
         await this.loadAllData();
       } else {
         await this.taskViewModel.loadTasksByCollection(this.selectedCollection.id);
-        this.syncFromViewModel();
+        await this.syncFromViewModel();
       }
     } catch (err) {
       promptAction.showToast({ message: `刷新失败: ${JSON.stringify(err)}`, duration: 2000 });
@@ -727,10 +705,28 @@ export struct TaskPage {
     }
   }
 
-  private syncFromViewModel(): void {
+  private async syncFromViewModel(): Promise<void> {
     this.tasks = [...this.taskViewModel.tasks];
     this.pendingCount = this.taskViewModel.pendingCount;
     this.todayDoneCount = this.taskViewModel.todayDoneCount;
+    await this.loadTaskFocusTimes();
+  }
+
+  /**
+   * 加载所有任务的专注时长
+   */
+  private async loadTaskFocusTimes(): Promise<void> {
+    try {
+      const sessionDao = new SessionDao();
+      const map = new Map<number, number>();
+      for (const task of this.tasks) {
+        const totalSecs = await sessionDao.sumDurationByTaskId(task.id);
+        map.set(task.id, Math.floor(totalSecs / 60));
+      }
+      this.taskFocusMap = map;
+    } catch (err) {
+      // 静默失败，不影响任务列表展示
+    }
   }
 
   /**
@@ -804,7 +800,7 @@ export struct TaskPage {
             if (this.selectedCollection && this.selectedCollection.id === col.id) {
               this.selectedCollection = null;
               await this.taskViewModel.loadTasks();
-              this.syncFromViewModel();
+              await this.syncFromViewModel();
             }
           } catch (err) {
             promptAction.showToast({ message: `删除合集失败: ${JSON.stringify(err)}`, duration: 2000 });
@@ -825,12 +821,12 @@ export struct TaskPage {
     const dialogController = new CustomDialogController({
       builder: AddTaskDialog({
         confirmCallback: (
-          title: string, pomodoros: number, priority: number,
+          title: string, priority: number,
           collectionId: number, taskType: number,
           startDate: number, endDate: number
         ) => {
           dialogController.close();
-          this.onAddTaskConfirm(title, pomodoros, priority, collectionId, taskType, startDate, endDate);
+          this.onAddTaskConfirm(title, priority, collectionId, taskType, startDate, endDate);
         },
         onDialogClose: () => {
           dialogController.close();
@@ -848,7 +844,6 @@ export struct TaskPage {
 
   private async onAddTaskConfirm(
     title: string,
-    pomodoros: number,
     priority: number,
     collectionId: number,
     taskType: number,
@@ -856,8 +851,8 @@ export struct TaskPage {
     endDate: number
   ): Promise<void> {
     try {
-      await this.taskViewModel.addTask(title, pomodoros, priority, collectionId, taskType, startDate, endDate);
-      this.syncFromViewModel();
+      await this.taskViewModel.addTask(title, priority, collectionId, taskType, startDate, endDate);
+      await this.syncFromViewModel();
       promptAction.showToast({ message: '任务已添加', duration: 1500 });
     } catch (err) {
       promptAction.showToast({ message: `添加失败: ${JSON.stringify(err)}`, duration: 2000 });
@@ -867,7 +862,7 @@ export struct TaskPage {
   private async onToggle(task: Task): Promise<void> {
     try {
       await this.taskViewModel.toggleDone(task);
-      this.syncFromViewModel();
+      await this.syncFromViewModel();
     } catch (err) {
       promptAction.showToast({ message: `操作失败: ${JSON.stringify(err)}`, duration: 2000 });
     }
@@ -876,7 +871,7 @@ export struct TaskPage {
   private async onDelete(task: Task): Promise<void> {
     try {
       await this.taskViewModel.deleteTask(task);
-      this.syncFromViewModel();
+      await this.syncFromViewModel();
       promptAction.showToast({ message: '任务已删除', duration: 1500 });
     } catch (err) {
       promptAction.showToast({ message: `删除失败: ${JSON.stringify(err)}`, duration: 2000 });

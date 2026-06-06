@@ -1,8 +1,9 @@
 // ===== viewmodel/TimerViewModel.ets =====
-// 番茄钟核心状态机 — @ObservedV2
+// 番茄钟核心状态机 — @ObservedV2 — 正向计时 + 手动休息
 
 import { emitter } from '@kit.BasicServicesKit';
 import { Task } from '../model/TaskModel';
+import { Session } from '../model/SessionModel';
 import { SessionDao, CreateSessionParams } from '../database/SessionDao';
 import { AuthGuard } from '../utils/AuthGuard';
 
@@ -14,15 +15,12 @@ import { AuthGuard } from '../utils/AuthGuard';
 export enum TimerState {
   IDLE = 'IDLE',
   FOCUSING = 'FOCUSING',
-  SHORT_BREAK = 'SHORT_BREAK',
-  LONG_BREAK = 'LONG_BREAK',
   PAUSED = 'PAUSED',
+  RESTING = 'RESTING',
 }
 
-/** 默认时长（分钟） */
-const FOCUS_MINUTES = 25;
-const SHORT_BREAK_MINUTES = 5;
-const LONG_BREAK_MINUTES = 15;
+/** 手动休息时长（分钟） */
+const REST_MINUTES = 5;
 
 /** emitter 事件 ID */
 const EVENT_CMD = 1001;
@@ -43,44 +41,29 @@ interface TimerCmd {
 export class TimerViewModel {
   /** 当前状态 */
   @Trace state: TimerState = TimerState.IDLE;
-  /** 当前番茄序号（从 1 起） */
-  @Trace currentPomodoro: number = 1;
-  /** 今日累计完成番茄数 */
-  @Trace todayPomodoros: number = 0;
-  /** 今日累计专注分钟数 */
-  @Trace todayMinutes: number = 0;
-  /** 本次专注的中断次数 */
-  @Trace interruptions: number = 0;
   /** 当前选中的任务 */
   @Trace selectedTask: Task | null = null;
+  /** 今日专注次数 */
+  @Trace todayFocusCount: number = 0;
+  /** 今日专注总分钟数 */
+  @Trace todayFocusMinutes: number = 0;
+  /** 当前专注已走秒数（正向累加） */
+  @Trace elapsedSeconds: number = 0;
+  /** 休息剩余秒数（倒计时） */
+  @Trace restRemainSeconds: number = 0;
 
   /** 暂停前的状态（用于恢复） */
   private previousState: TimerState = TimerState.IDLE;
   /** 专注开始时间戳（用于精确计算实际时长） */
   private focusStartTime: number = 0;
-  /** 累计暂停毫秒数 */
+  /** 本次专注累计暂停毫秒 */
   private pauseAccumulator: number = 0;
   /** 暂停开始时间 */
   private pauseStartTime: number = 0;
-  /** setInterval 句柄（本地倒计时） */
+  /** setInterval 句柄 */
   private timerId?: number;
-  /** 当前倒计时剩余秒数 */
-  private countdownSeconds: number = 0;
 
   private sessionDao: SessionDao = new SessionDao();
-
-  /** 专注时长（秒） */
-  get focusDurationSeconds(): number {
-    return FOCUS_MINUTES * 60;
-  }
-  /** 短休息时长（秒） */
-  get shortBreakSeconds(): number {
-    return SHORT_BREAK_MINUTES * 60;
-  }
-  /** 长休息时长（秒） */
-  get longBreakSeconds(): number {
-    return LONG_BREAK_MINUTES * 60;
-  }
 
   constructor() {
     this.listenForTimeUp();
@@ -91,105 +74,122 @@ export class TimerViewModel {
   // ═══════════════════════════════════════════════
 
   /**
-   * 开始专注
+   * 开始专注（正向计时从 0 开始）
    */
   start(): void {
     if (this.state !== TimerState.IDLE) {
       return;
     }
     this.state = TimerState.FOCUSING;
-    this.interruptions = 0;
-    this.pauseAccumulator = 0;
+    this.elapsedSeconds = 0;
     this.focusStartTime = Date.now();
-
-    const secs = this.focusDurationSeconds;
-    this.sendCmd('start', secs);
-    // 启动本地倒计时
-    this.countdownSeconds = secs;
-    this.emitTick(this.countdownSeconds, 'FOCUSING');
-    this.startCountdown();
+    this.pauseAccumulator = 0;
+    this.sendCmd('start', 0);
+    this.emitTick(this.elapsedSeconds, 'FOCUSING');
+    this.startForwardTimer();
   }
 
   /**
-   * 暂停
+   * 暂停专注
    */
   pause(): void {
-    if (this.state === TimerState.IDLE || this.state === TimerState.PAUSED) {
+    if (this.state !== TimerState.FOCUSING) {
       return;
     }
     this.previousState = this.state;
     this.state = TimerState.PAUSED;
     this.pauseStartTime = Date.now();
-
-    if (this.previousState === TimerState.FOCUSING) {
-      this.interruptions++;
-    }
-    this.clearCountdown();
-    this.emitTick(this.countdownSeconds, 'PAUSED');
+    this.clearTimer();
+    this.emitTick(this.elapsedSeconds, 'PAUSED');
     this.sendCmd('pause');
   }
 
   /**
-   * 恢复
+   * 恢复专注
    */
   resume(): void {
     if (this.state !== TimerState.PAUSED) {
       return;
     }
-    if (this.previousState === TimerState.FOCUSING) {
-      this.pauseAccumulator += Date.now() - this.pauseStartTime;
-    }
-    this.state = this.previousState;
-    this.emitTick(this.countdownSeconds, this.state);
-    this.startCountdown();
+    this.pauseAccumulator += Date.now() - this.pauseStartTime;
+    this.state = TimerState.FOCUSING;
+    this.emitTick(this.elapsedSeconds, 'FOCUSING');
+    this.startForwardTimer();
     this.sendCmd('resume');
   }
 
   /**
-   * 跳过当前阶段（休息中可用）
+   * 停止专注（写入 session 并回到 IDLE）
    */
-  skip(): void {
-    if (this.state !== TimerState.SHORT_BREAK && this.state !== TimerState.LONG_BREAK) {
+  async stop(): Promise<void> {
+    if (this.state !== TimerState.FOCUSING && this.state !== TimerState.PAUSED) {
       return;
     }
-    this.state = TimerState.IDLE;
-    this.clearCountdown();
-    this.countdownSeconds = 0;
-    this.sendCmd('stop');
-  }
 
-  /**
-   * 放弃（任意状态 → IDLE）
-   * 如果正在专注则写入不完整 session
-   */
-  stop(): void {
-    if (this.state === TimerState.IDLE) {
-      return;
-    }
-    // 正在专注或暂停专注 → 写不完整记录
+    // 如果正在专注或从专注暂停，写入 session
     if (this.state === TimerState.FOCUSING ||
       (this.state === TimerState.PAUSED && this.previousState === TimerState.FOCUSING)) {
-      this.writeSession(false);
+      await this.writeSession(true);
+      this.todayFocusCount++;
     }
+
     this.state = TimerState.IDLE;
-    this.clearCountdown();
-    this.countdownSeconds = 0;
+    this.clearTimer();
+    this.elapsedSeconds = 0;
     this.sendCmd('stop');
     this.emitTick(-1, 'STOPPED');
+    await this.loadTodayStats();
   }
 
   /**
-   * 计算进度 (0.0 ~ 1.0)，配合 TimerService 的 tick 使用
+   * 开始手动休息（从 IDLE 进入 RESTING）
    */
-  getProgress(tickSeconds: number, st: TimerState): number {
-    const total = this.getTotalSeconds(st);
-    if (total <= 0 || st === TimerState.IDLE || st === TimerState.PAUSED) {
+  startRest(): void {
+    if (this.state !== TimerState.IDLE) {
+      return;
+    }
+    this.state = TimerState.RESTING;
+    this.restRemainSeconds = REST_MINUTES * 60;
+    this.sendCmd('start', this.restRemainSeconds);
+    this.emitTick(this.restRemainSeconds, 'RESTING');
+    this.startRestCountdown();
+  }
+
+  /**
+   * 跳过休息（RESTING → IDLE）
+   */
+  skipRest(): void {
+    if (this.state !== TimerState.RESTING) {
+      return;
+    }
+    this.state = TimerState.IDLE;
+    this.clearTimer();
+    this.restRemainSeconds = 0;
+    this.sendCmd('stop');
+  }
+
+  /**
+   * 计算进度 (0.0 ~ 1.0)
+   * - FOCUSING: 正向计时，用 1 小时（3600 秒）作为满环刻度
+   * - RESTING: 倒计时，restRemainSeconds / (REST_MINUTES * 60) 的反比
+   * - IDLE / PAUSED: 0
+   */
+  getProgress(seconds: number, st: TimerState): number {
+    if (st === TimerState.IDLE || st === TimerState.PAUSED) {
       return 0;
     }
-    if (tickSeconds >= total) {
-      return 0;
+    if (st === TimerState.FOCUSING) {
+      // 正向计时无终点，用 1 小时作为满环刻度（3600 秒 = 100%）
+      return Math.min(1, seconds / 3600);
     }
-    return 1 - (tickSeconds / total);
+    if (st === TimerState.RESTING) {
+      const total = REST_MINUTES * 60;
+      if (total <= 0) {
+        return 0;
+      }
+      return 1 - (seconds / total);
+    }
+    return 0;
   }
 
   /**
@@ -202,32 +202,17 @@ export class TimerViewModel {
         return;
       }
       const todayStart = this.getTodayStartMs();
-      const sessions = await this.sessionDao.findByUser(userId, todayStart);
-      // 仅统计完整完成的专注 session
-      const completedSessions = sessions.filter((s) => s.completed === 1);
-      this.todayPomodoros = completedSessions.length;
+      const sessions: Session[] = await this.sessionDao.findByUser(userId, todayStart);
+      const completed = sessions.filter((s: Session) => s.completed === 1);
+      this.todayFocusCount = completed.length;
       let totalSecs = 0;
-      for (const s of completedSessions) {
+      for (const s of completed) {
         totalSecs += s.durationSeconds;
       }
-      this.todayMinutes = Math.floor(totalSecs / 60);
+      this.todayFocusMinutes = Math.floor(totalSecs / 60);
     } catch (err) {
       console.error('[TimerViewModel] loadTodayStats error:', JSON.stringify(err));
     }
-  }
-
-  /**
-   * 获取指定状态对应的总秒数
-   */
-  getTotalSeconds(st: TimerState): number {
-    if (st === TimerState.FOCUSING) {
-      return this.focusDurationSeconds;
-    } else if (st === TimerState.SHORT_BREAK) {
-      return this.shortBreakSeconds;
-    } else if (st === TimerState.LONG_BREAK) {
-      return this.longBreakSeconds;
-    }
-    return 0;
   }
 
   // ═══════════════════════════════════════════════
@@ -235,7 +220,7 @@ export class TimerViewModel {
   // ═══════════════════════════════════════════════
 
   /**
-   * 监听 TimerService 的 timeUp 事件
+   * 监听 TimerService 的 timeUp 事件（仅休息倒计时归零时触发）
    */
   private listenForTimeUp(): void {
     emitter.on({ eventId: EVENT_NOTIFY }, (eventData: emitter.EventData) => {
@@ -247,46 +232,43 @@ export class TimerViewModel {
   }
 
   /**
-   * 时间到：写 session + 切换状态
+   * 时间到：专注无自动结束，仅处理休息结束
    */
   private handleTimeUp(): void {
-    try {
-      if (this.state === TimerState.FOCUSING ||
-        (this.state === TimerState.PAUSED && this.previousState === TimerState.FOCUSING)) {
-        // 专注结束 → 写完成记录 → 进入休息
-        this.writeSession(true);
-        this.todayPomodoros++;
-        this.todayMinutes += FOCUS_MINUTES;
-        this.currentPomodoro++;
-
-        // 每 4 个番茄 → 长休息
-        if (this.currentPomodoro % 4 === 1) {
-          // 刚完成的是第 N 个，N%4==0 → 长休息
-          // currentPomodoro 已+1，检查 (currentPomodoro-1) % 4 === 0
-        }
-        if ((this.currentPomodoro - 1) % 4 === 0) {
-          this.state = TimerState.LONG_BREAK;
-          this.sendCmd('start', this.longBreakSeconds);
-          this.countdownSeconds = this.longBreakSeconds;
-          this.emitTick(this.countdownSeconds, 'LONG_BREAK');
-          this.startCountdown();
-        } else {
-          this.state = TimerState.SHORT_BREAK;
-          this.sendCmd('start', this.shortBreakSeconds);
-          this.countdownSeconds = this.shortBreakSeconds;
-          this.emitTick(this.countdownSeconds, 'SHORT_BREAK');
-          this.startCountdown();
-        }
-      } else if (this.state === TimerState.SHORT_BREAK || this.state === TimerState.LONG_BREAK) {
-        // 休息结束 → 归位 IDLE
-        this.state = TimerState.IDLE;
-        this.clearCountdown();
-        this.countdownSeconds = 0;
-      }
-      // PAUSED 状态下不应触发 timeUp（服务已暂停）
-    } catch (err) {
-      console.error('[TimerViewModel] handleTimeUp error:', JSON.stringify(err));
+    if (this.state === TimerState.RESTING) {
+      this.state = TimerState.IDLE;
+      this.clearTimer();
+      this.restRemainSeconds = 0;
+      this.sendCmd('stop');
+      // 可选：发送通知"休息结束"，由 TimerService 的 notification 承担
     }
+    // 专注不再有 timeUp（正向计时无自动结束）
+  }
+
+  /**
+   * 正向走时（每秒 +1）
+   */
+  private startForwardTimer(): void {
+    this.clearTimer();
+    this.timerId = setInterval(() => {
+      this.elapsedSeconds++;
+      this.emitTick(this.elapsedSeconds, this.state);
+    }, 1000);
+  }
+
+  /**
+   * 休息倒计时（每秒 -1）
+   */
+  private startRestCountdown(): void {
+    this.clearTimer();
+    this.timerId = setInterval(() => {
+      this.restRemainSeconds--;
+      this.emitTick(this.restRemainSeconds, 'RESTING');
+      if (this.restRemainSeconds <= 0) {
+        this.clearTimer();
+        this.handleTimeUp();
+      }
+    }, 1000);
   }
 
   /**
@@ -305,8 +287,8 @@ export class TimerViewModel {
         taskId: taskId,
         startTime: this.focusStartTime,
         endTime: endTime,
-        durationSeconds: actualDuration > 0 ? actualDuration : this.focusDurationSeconds,
-        interruptions: this.interruptions,
+        durationSeconds: actualDuration > 0 ? actualDuration : 0,
+        interruptions: 0,  // 不再追踪中断次数
         completed: completed ? 1 : 0,
       };
       await this.sessionDao.insert(params);
@@ -330,38 +312,23 @@ export class TimerViewModel {
   }
 
   /**
-   * 启动本地倒计时（setInterval 每秒递减并广播 tick）
+   * 通过 emitter 广播 tick 事件（驱动 TimerPage UI 更新）
    */
-  private startCountdown(): void {
-    this.clearCountdown();
-    this.timerId = setInterval(() => {
-      this.countdownSeconds--;
-      this.emitTick(this.countdownSeconds, this.state);
-      if (this.countdownSeconds <= 0) {
-        this.clearCountdown();
-        this.handleTimeUp();
-      }
-    }, 1000);
+  private emitTick(seconds: number, state: string): void {
+    emitter.emit(
+      { eventId: EVENT_TICK, priority: emitter.EventPriority.LOW },
+      { data: { remainSeconds: seconds, timerState: state } }
+    );
   }
 
   /**
-   * 清除本地倒计时
+   * 清除定时器
    */
-  private clearCountdown(): void {
+  private clearTimer(): void {
     if (this.timerId !== undefined) {
       clearInterval(this.timerId);
       this.timerId = undefined;
     }
-  }
-
-  /**
-   * 通过 emitter 广播 tick 事件（驱动 TimerPage UI 更新）
-   */
-  private emitTick(remainSeconds: number, state: string): void {
-    emitter.emit(
-      { eventId: EVENT_TICK, priority: emitter.EventPriority.LOW },
-      { data: { remainSeconds: remainSeconds, timerState: state } }
-    );
   }
 
   /**

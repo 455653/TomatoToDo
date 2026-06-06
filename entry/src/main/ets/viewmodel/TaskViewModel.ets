@@ -72,12 +72,11 @@ export class TaskViewModel {
    */
   async addTask(
     title: string,
-    pomodoros: number,
     priority: Priority,
     collectionId: number = 0,
-    taskType: number = 0,   // 新增，默认0(阶段性)
-    startDate: number = 0,  // 新增
-    endDate: number = 0     // 新增
+    taskType: number = 0,
+    startDate: number = 0,
+    endDate: number = 0
   ): Promise<void> {
     try {
       const userId: number = AuthGuard.getCurrentUserId();
@@ -87,7 +86,6 @@ export class TaskViewModel {
       await this.taskDao.insert({
         userId: userId,
         title: title,
-        estimatedPomodoros: pomodoros,
         done: false,
         priority: priority,
         createdAt: Date.now(),

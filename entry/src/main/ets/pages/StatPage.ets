@@ -134,9 +134,9 @@ export struct StatPage {
   @Builder
   BuildTodayMetrics() {
     Row({ space: 8 }) {
-      this.BuildMetricCard('番茄数', this.viewModel.todayPomodoros.toString(), '#FF6347')
+      this.BuildMetricCard('专注次数', this.viewModel.todayFocusCount.toString(), '#FF6347')
       this.BuildMetricCard('专注分钟', this.viewModel.todayMinutes.toString(), '#4CAF50')
-      this.BuildMetricCard('完成任务', this.viewModel.todayDoneTasks.toString(), '#2196F3')
+      this.BuildMetricCard('涉及任务', this.viewModel.todayDoneTasks.toString(), '#2196F3')
       this.BuildMetricCard('质量分', '--', '#FF9800')
     }
     .width('100%')
@@ -170,7 +170,7 @@ export struct StatPage {
   @Builder
   BuildCumulative() {
     Row({ space: 8 }) {
-      this.BuildStatCol('🥇 总番茄', `${this.viewModel.totalPomodoros} 个`)
+      this.BuildStatCol('🥇 总次数', `${this.viewModel.totalFocusCount} 次`)
       this.BuildStatCol('⏱️ 总时长', `${this.viewModel.totalHours} 小时`)
       this.BuildStatCol('🔥 连续天数', `${this.viewModel.streakDays} 天`)
     }
