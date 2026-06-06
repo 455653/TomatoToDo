@@ -15,7 +15,7 @@ import { AiDrawerContent } from '../components/AiDrawer';
 
 @CustomDialog
 struct AddTaskDialog {
-  /** 框架自动注入 */
+  /** 框架自动注入（用于 cancel 按钮关闭，不保证在 private 方法中可用） */
   controller: CustomDialogController;
   /** 确认回调 */
   confirmCallback?: AddTaskCallback;
@@ -23,6 +23,8 @@ struct AddTaskDialog {
   dialogTitle?: string = '添加任务';
   /** 当前合集 ID */
   collectionId?: number = 0;
+  /** 关闭弹窗回调（闭包捕获 dialogController，避免 this 绑定问题） */
+  onDialogClose?: () => void;
 
   /** 输入：任务名称 */
   @State inputTitle: string = '';
@@ -118,12 +120,12 @@ struct AddTaskDialog {
         Button('取消')
           .layoutWeight(1).height(44).fontSize(16).fontColor('#666666')
           .backgroundColor('#F0F0F0').borderRadius(22)
-          .onClick(() => { this.controller.close(); })
+          .onClick(() => { this.closeDialog(); })
         Blank().width(16)
         Button('确认添加')
           .layoutWeight(1).height(44).fontSize(16).fontColor('#FFFFFF')
           .backgroundColor('#FF6347').borderRadius(22)
-          .onClick(() => { this.handleConfirm(); })
+          .onClick(() => { this.onConfirmClick(); })
       }
       .width('100%').margin({ bottom: 24 })
     }
@@ -131,7 +133,24 @@ struct AddTaskDialog {
     .backgroundColor('#FFFFFF').borderRadius({ topLeft: 16, topRight: 16 })
   }
 
-  private handleConfirm(): void {
+  /**
+   * 安全关闭弹窗：优先使用闭包回调，回退到 controller
+   */
+  closeDialog(): void {
+    if (this.onDialogClose) {
+      this.onDialogClose();
+    } else if (this.controller) {
+      this.controller.close();
+    }
+  }
+
+  /**
+   * 「确认添加」按钮处理
+   * 注意：此处不直接使用 this.controller.close()，因为 ArkTS 中
+   * @CustomDialog 的 controller 在非 build() 方法中可能因 this 绑定问题而为 undefined。
+   * 改用 onDialogClose 闭包回调安全关闭弹窗。
+   */
+  onConfirmClick(): void {
     const title = this.inputTitle.trim();
     if (title.length === 0) {
       promptAction.showToast({ message: '请输入任务名称', duration: 1500 });
@@ -140,7 +159,7 @@ struct AddTaskDialog {
     if (this.confirmCallback) {
       this.confirmCallback(title, this.pomodoroCount, this.selectedPriority, this.collectionId ?? 0);
     }
-    this.controller.close();
+    this.closeDialog();
   }
 }
 
@@ -667,7 +686,11 @@ export struct TaskPage {
     const dialogController = new CustomDialogController({
       builder: AddTaskDialog({
         confirmCallback: (title: string, pomodoros: number, priority: number, collectionId: number) => {
+          dialogController.close();
           this.onAddTaskConfirm(title, pomodoros, priority, collectionId);
+        },
+        onDialogClose: () => {
+          dialogController.close();
         },
         dialogTitle: colName ? `添加到「${colName}」` : '添加任务',
         collectionId: colId,
