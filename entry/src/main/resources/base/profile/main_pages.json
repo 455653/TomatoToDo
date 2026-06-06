@@ -3,6 +3,7 @@
     "pages/LoginPage",
     "pages/Index",
     "pages/TaskPage",
+    "pages/TodayPage",
     "pages/TimerPage",
     "pages/StatPage"
   ]

@@ -16,6 +16,9 @@ export interface CreateTaskParams {
   priority: number;
   createdAt: number;
   collectionId: number;
+  taskType: number;      // 新增
+  startDate: number;     // 新增
+  endDate: number;       // 新增
 }
 
 /**
@@ -38,6 +41,9 @@ export class TaskDao {
         'priority': task.priority,
         'created_at': task.createdAt,
         'collection_id': task.collectionId,
+        'task_type': task.taskType,
+        'start_date': task.startDate,
+        'end_date': task.endDate,
       };
       const rowId: number = await store.insert('tasks', valueBucket);
       return rowId;
@@ -119,6 +125,9 @@ export class TaskDao {
         'priority': task.priority,
         'created_at': task.createdAt,
         'collection_id': task.collectionId,
+        'task_type': task.taskType,
+        'start_date': task.startDate,
+        'end_date': task.endDate,
       };
       const predicates = new relationalStore.RdbPredicates('tasks');
       predicates.equalTo('id', task.id);
@@ -172,6 +181,68 @@ export class TaskDao {
       priority: rs.getLong(rs.getColumnIndex('priority')),
       createdAt: rs.getLong(rs.getColumnIndex('created_at')),
       collectionId: rs.getLong(rs.getColumnIndex('collection_id')),
+      taskType: rs.getLong(rs.getColumnIndex('task_type')),
+      startDate: rs.getLong(rs.getColumnIndex('start_date')),
+      endDate: rs.getLong(rs.getColumnIndex('end_date')),
     };
+  }
+
+  /**
+   * 查询指定日期范围内有效的阶段性任务
+   * @param rangeStart 起始时间戳（毫秒）
+   * @param rangeEnd 结束时间戳（毫秒）
+   */
+  async findActiveMilestoneTasks(userId: number, rangeStart: number, rangeEnd: number): Promise<Task[]> {
+    try {
+      const store = await DbHelper.getInstance().getRdb();
+      const sql = `SELECT * FROM tasks WHERE user_id = ? AND task_type = 0
+        AND start_date <= ? AND end_date >= ?
+        ORDER BY priority DESC, created_at DESC`;
+      const rs = await store.querySql(sql, [userId.toString(), rangeStart.toString(), rangeEnd.toString()]);
+      const tasks: Task[] = [];
+      while (rs.goToNextRow()) { tasks.push(this.rowToTask(rs)); }
+      rs.close();
+      return tasks;
+    } catch (err) {
+      throw new Error(`查询有效阶段性任务失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * 查询已过期的阶段性任务（未完成的）
+   * @param rangeStart 当前时间起点（毫秒）
+   */
+  async findOverdueMilestoneTasks(userId: number, rangeStart: number): Promise<Task[]> {
+    try {
+      const store = await DbHelper.getInstance().getRdb();
+      const sql = `SELECT * FROM tasks WHERE user_id = ? AND task_type = 0
+        AND end_date < ? AND done = 0
+        ORDER BY end_date ASC, priority DESC`;
+      const rs = await store.querySql(sql, [userId.toString(), rangeStart.toString()]);
+      const tasks: Task[] = [];
+      while (rs.goToNextRow()) { tasks.push(this.rowToTask(rs)); }
+      rs.close();
+      return tasks;
+    } catch (err) {
+      throw new Error(`查询过期阶段性任务失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * 查询所有习惯性任务
+   */
+  async findHabitTasks(userId: number): Promise<Task[]> {
+    try {
+      const store = await DbHelper.getInstance().getRdb();
+      const sql = `SELECT * FROM tasks WHERE user_id = ? AND task_type = 1
+        ORDER BY priority DESC, created_at DESC`;
+      const rs = await store.querySql(sql, [userId.toString()]);
+      const tasks: Task[] = [];
+      while (rs.goToNextRow()) { tasks.push(this.rowToTask(rs)); }
+      rs.close();
+      return tasks;
+    } catch (err) {
+      throw new Error(`查询习惯性任务失败: ${JSON.stringify(err)}`);
+    }
   }
 }

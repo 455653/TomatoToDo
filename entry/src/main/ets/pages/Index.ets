@@ -1,9 +1,10 @@
 // ===== pages/Index.ets =====
-// 主容器页面 —— 底部 TabBar 导航（任务 | 专注 | 统计 | 我的）
+// 主容器页面 —— 底部 TabBar 导航（任务 | 今日 | 专注 | 统计 | 我的）
 
 import { router } from '@kit.ArkUI';
 import { AuthGuard } from '../utils/AuthGuard';
 import { TaskPage } from './TaskPage';
+import { TodayPage } from './TodayPage';
 import { TimerPage } from './TimerPage';
 import { StatPage } from './StatPage';
 
@@ -39,7 +40,15 @@ struct Index {
       .tabBar(this.TabBarTask())
 
       // ═══════════════════════════════════════
-      // Tab 1：专注
+      // Tab 1：今日
+      // ═══════════════════════════════════════
+      TabContent() {
+        TodayPage()
+      }
+      .tabBar(this.TabBarToday())
+
+      // ═══════════════════════════════════════
+      // Tab 2：专注
       // ═══════════════════════════════════════
       TabContent() {
         TimerPage()
@@ -47,7 +56,7 @@ struct Index {
       .tabBar(this.TabBarFocus())
 
       // ═══════════════════════════════════════
-      // Tab 2：统计
+      // Tab 3：统计
       // ═══════════════════════════════════════
       TabContent() {
         StatPage()
@@ -55,7 +64,7 @@ struct Index {
       .tabBar(this.TabBarStats())
 
       // ═══════════════════════════════════════
-      // Tab 3：我的（占位）
+      // Tab 4：我的（占位）
       // ═══════════════════════════════════════
       TabContent() {
         this.SettingsPlaceholder()
@@ -68,7 +77,7 @@ struct Index {
     .onChange((index: number) => {
       this.currentTabIndex = index;
     })
-    .cachedMaxCount(3, TabsCacheMode.CACHE_BOTH_SIDE)
+    .cachedMaxCount(5, TabsCacheMode.CACHE_BOTH_SIDE)
     .width('100%')
     .height('100%')
   }
@@ -95,14 +104,31 @@ struct Index {
   }
 
   @Builder
+  TabBarToday() {
+    Column() {
+      Text('📋')
+        .fontSize(22)
+        .fontColor(this.currentTabIndex === 1 ? '#E53935' : '#9E9E9E')
+      Text('今日')
+        .fontSize(10)
+        .fontColor(this.currentTabIndex === 1 ? '#E53935' : '#9E9E9E')
+        .margin({ top: 2 })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  @Builder
   TabBarFocus() {
     Column() {
       Text('🍅')
         .fontSize(22)
-        .fontColor(this.currentTabIndex === 1 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 2 ? '#E53935' : '#9E9E9E')
       Text('专注')
         .fontSize(10)
-        .fontColor(this.currentTabIndex === 1 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 2 ? '#E53935' : '#9E9E9E')
         .margin({ top: 2 })
     }
     .width('100%')
@@ -116,10 +142,10 @@ struct Index {
     Column() {
       Text('📊')
         .fontSize(22)
-        .fontColor(this.currentTabIndex === 2 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 3 ? '#E53935' : '#9E9E9E')
       Text('统计')
         .fontSize(10)
-        .fontColor(this.currentTabIndex === 2 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 3 ? '#E53935' : '#9E9E9E')
         .margin({ top: 2 })
     }
     .width('100%')
@@ -133,10 +159,10 @@ struct Index {
     Column() {
       Text('👤')
         .fontSize(22)
-        .fontColor(this.currentTabIndex === 3 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 4 ? '#E53935' : '#9E9E9E')
       Text('我的')
         .fontSize(10)
-        .fontColor(this.currentTabIndex === 3 ? '#E53935' : '#9E9E9E')
+        .fontColor(this.currentTabIndex === 4 ? '#E53935' : '#9E9E9E')
         .margin({ top: 2 })
     }
     .width('100%')

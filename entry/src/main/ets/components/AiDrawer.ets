@@ -6,7 +6,7 @@ import { promptAction } from '@kit.ArkUI';
 import { DeepSeekApi, SubTask } from '../utils/DeepSeekApi';
 import { TaskDao } from '../database/TaskDao';
 import { AuthGuard } from '../utils/AuthGuard';
-import { Priority } from '../model/TaskModel';
+import { Priority, TaskType } from '../model/TaskModel';
 
 /** 抽屉内部状态枚举 */
 enum DrawerState {
@@ -431,6 +431,9 @@ export struct AiDrawerContent {
           priority: Priority.MEDIUM,
           createdAt: Date.now(),
           collectionId: this.collectionId,
+          taskType: TaskType.MILESTONE,
+          startDate: 0,
+          endDate: 0,
         });
       }
 

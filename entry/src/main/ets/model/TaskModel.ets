@@ -19,6 +19,12 @@ export interface Task {
   priority: number;
   /** 创建时间戳（毫秒） */
   createdAt: number;
+  /** 任务类型 0=阶段性 1=习惯性 */
+  taskType: number;
+  /** 阶段开始日期时间戳（毫秒），习惯性任务为0 */
+  startDate: number;
+  /** 阶段结束日期时间戳（毫秒），习惯性任务为0 */
+  endDate: number;
 }
 
 /** 任务优先级枚举 */
@@ -26,4 +32,10 @@ export enum Priority {
   LOW = 0,
   MEDIUM = 1,
   HIGH = 2,
+}
+
+/** 任务类型 */
+export enum TaskType {
+  MILESTONE = 0,  // 阶段性任务
+  HABIT = 1,      // 习惯性任务
 }

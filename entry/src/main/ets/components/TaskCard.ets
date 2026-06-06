@@ -22,6 +22,9 @@ export struct TaskCard {
     priority: Priority.MEDIUM,
     createdAt: 0,
     collectionId: 0,
+    taskType: 0,
+    startDate: 0,
+    endDate: 0,
   };
 
   /** 任务所属合集名称（可选，用于在卡片上显示合集标识） */

@@ -3,6 +3,7 @@
 
 import { Task, Priority } from '../model/TaskModel';
 import { TaskDao } from '../database/TaskDao';
+import { DailyTaskLogDao } from '../database/DailyTaskLogDao';
 import { AuthGuard } from '../utils/AuthGuard';
 
 /**
@@ -69,7 +70,15 @@ export class TaskViewModel {
    * 添加新任务
    * @param collectionId 所属合集ID，0 表示未分类
    */
-  async addTask(title: string, pomodoros: number, priority: Priority, collectionId: number = 0): Promise<void> {
+  async addTask(
+    title: string,
+    pomodoros: number,
+    priority: Priority,
+    collectionId: number = 0,
+    taskType: number = 0,   // 新增，默认0(阶段性)
+    startDate: number = 0,  // 新增
+    endDate: number = 0     // 新增
+  ): Promise<void> {
     try {
       const userId: number = AuthGuard.getCurrentUserId();
       if (userId <= 0) {
@@ -83,6 +92,9 @@ export class TaskViewModel {
         priority: priority,
         createdAt: Date.now(),
         collectionId: collectionId,
+        taskType: taskType,
+        startDate: startDate,
+        endDate: endDate,
       });
       // 保持当前合集筛选状态重新加载
       if (this.currentCollectionId === -1) {
@@ -118,6 +130,10 @@ export class TaskViewModel {
    */
   async deleteTask(task: Task): Promise<void> {
     try {
+      // 先清理该任务的所有打卡记录
+      const dailyLogDao = new DailyTaskLogDao();
+      await dailyLogDao.deleteAllByTaskId(task.id);
+      // 再删除任务本身
       await this.taskDao.deleteById(task.id);
       // 保持当前合集筛选状态重新加载
       if (this.currentCollectionId === -1) {

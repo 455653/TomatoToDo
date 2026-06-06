@@ -60,6 +60,16 @@ const CREATE_COLLECTIONS_TABLE = `
   );
 `;
 
+const CREATE_DAILY_TASK_LOG_TABLE = `
+  CREATE TABLE IF NOT EXISTS daily_task_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER,
+    user_id INTEGER,
+    log_date TEXT,
+    completed_at INTEGER
+  );
+`;
+
 /**
  * DbHelper —— 单例模式
  * 使用前必须先调用 init(context) 传入应用上下文
@@ -125,8 +135,21 @@ export class DbHelper {
       } catch (_err) {
         // 列已存在或其他 ALTER 错误，忽略继续
       }
+      // 兼容老数据库升级：尝试新增 task_type 列
+      try {
+        await this.rdbStore.executeSql('ALTER TABLE tasks ADD COLUMN task_type INTEGER DEFAULT 0');
+      } catch (_err) { /* 列已存在 */ }
+      // 兼容老数据库升级：尝试新增 start_date 列
+      try {
+        await this.rdbStore.executeSql('ALTER TABLE tasks ADD COLUMN start_date INTEGER DEFAULT 0');
+      } catch (_err) { /* 列已存在 */ }
+      // 兼容老数据库升级：尝试新增 end_date 列
+      try {
+        await this.rdbStore.executeSql('ALTER TABLE tasks ADD COLUMN end_date INTEGER DEFAULT 0');
+      } catch (_err) { /* 列已存在 */ }
       await this.rdbStore.executeSql(CREATE_SESSIONS_TABLE);
       await this.rdbStore.executeSql(CREATE_COLLECTIONS_TABLE);
+      await this.rdbStore.executeSql(CREATE_DAILY_TASK_LOG_TABLE);
     } catch (err) {
       throw new Error(`建表失败: ${JSON.stringify(err)}`);
     }

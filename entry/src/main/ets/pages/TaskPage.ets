@@ -2,7 +2,7 @@
 // 任务管理主页面 —— 两级导航：合集列表 → 合集内任务列表
 
 import { promptAction } from '@kit.ArkUI';
-import { Task, Priority } from '../model/TaskModel';
+import { Task, Priority, TaskType } from '../model/TaskModel';
 import { Collection } from '../model/CollectionModel';
 import { TaskViewModel } from '../viewmodel/TaskViewModel';
 import { CollectionViewModel, PRESET_COLORS } from '../viewmodel/CollectionViewModel';
@@ -32,6 +32,12 @@ struct AddTaskDialog {
   @State pomodoroCount: number = 1;
   /** 输入：优先级 */
   @State selectedPriority: number = Priority.MEDIUM;
+  /** 任务类型：0=阶段性, 1=习惯性 */
+  @State selectedTaskType: number = 0;
+  /** 开始日期（毫秒时间戳） */
+  @State startDate: number = 0;
+  /** 结束日期（毫秒时间戳） */
+  @State endDate: number = 0;
 
   aboutToAppear(): void {
     this.resetFields();
@@ -45,6 +51,12 @@ struct AddTaskDialog {
     this.inputTitle = '';
     this.pomodoroCount = 1;
     this.selectedPriority = Priority.MEDIUM;
+    this.selectedTaskType = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    this.startDate = today.getTime();
+    today.setHours(23, 59, 59, 999);
+    this.endDate = today.getTime();
   }
 
   build() {
@@ -114,7 +126,108 @@ struct AddTaskDialog {
           }
         }
       }
-      .width('100%').margin({ bottom: 24 }).alignItems(VerticalAlign.Center)
+      .width('100%').margin({ bottom: 16 }).alignItems(VerticalAlign.Center)
+
+      // ---- 任务类型 ----
+      Row() {
+        Text('任务类型')
+          .fontSize(15)
+          .fontColor('#333333')
+        Blank()
+        Row({ space: 12 }) {
+          Row() {
+            Radio({ value: 'milestone', group: 'taskTypeRadio' })
+              .checked(this.selectedTaskType === 0)
+              .onChange((isChecked: boolean) => {
+                if (isChecked) { this.selectedTaskType = 0; }
+              })
+            Text('阶段性').fontSize(13).fontColor('#FF6347').margin({ left: 4 })
+          }
+          Row() {
+            Radio({ value: 'habit', group: 'taskTypeRadio' })
+              .checked(this.selectedTaskType === 1)
+              .onChange((isChecked: boolean) => {
+                if (isChecked) { this.selectedTaskType = 1; }
+              })
+            Text('习惯性').fontSize(13).fontColor('#2196F3').margin({ left: 4 })
+          }
+        }
+      }
+      .width('100%')
+      .margin({ bottom: 16 })
+      .alignItems(VerticalAlign.Center)
+
+      // ---- 日期选择（仅阶段性任务显示） ----
+      if (this.selectedTaskType === 0) {
+        Column() {
+          // 开始日期
+          Row() {
+            Text('开始日期')
+              .fontSize(15)
+              .fontColor('#333333')
+            Blank()
+            Text(this.formatDate(this.startDate))
+              .fontSize(14)
+              .fontColor('#666666')
+              .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+              .backgroundColor('#F5F5F5')
+              .borderRadius(6)
+              .onClick(() => {
+                const d = new Date(this.startDate);
+                DatePickerDialog.show({
+                  start: new Date('2020-1-1'),
+                  end: new Date('2030-12-31'),
+                  selected: d,
+                  lunar: false,
+                  onAccept: (value: DatePickerResult) => {
+                    const newDate = new Date(value.year, value.month, value.day);
+                    newDate.setHours(0, 0, 0, 0);
+                    this.startDate = newDate.getTime();
+                    // 如果开始日期 > 结束日期，自动调整
+                    if (this.startDate > this.endDate) {
+                      newDate.setHours(23, 59, 59, 999);
+                      this.endDate = newDate.getTime();
+                    }
+                  },
+                });
+              })
+          }
+          .width('100%')
+          .margin({ bottom: 12 })
+          .alignItems(VerticalAlign.Center)
+
+          // 结束日期
+          Row() {
+            Text('结束日期')
+              .fontSize(15)
+              .fontColor('#333333')
+            Blank()
+            Text(this.formatDate(this.endDate))
+              .fontSize(14)
+              .fontColor('#666666')
+              .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+              .backgroundColor('#F5F5F5')
+              .borderRadius(6)
+              .onClick(() => {
+                const d = new Date(this.endDate);
+                DatePickerDialog.show({
+                  start: new Date(this.startDate > 0 ? this.startDate : '2020-1-1'),
+                  end: new Date('2030-12-31'),
+                  selected: d,
+                  lunar: false,
+                  onAccept: (value: DatePickerResult) => {
+                    const newDate = new Date(value.year, value.month, value.day);
+                    newDate.setHours(23, 59, 59, 999);
+                    this.endDate = newDate.getTime();
+                  },
+                });
+              })
+          }
+          .width('100%')
+          .margin({ bottom: 16 })
+          .alignItems(VerticalAlign.Center)
+        }
+      }
 
       Row() {
         Button('取消')
@@ -157,9 +270,27 @@ struct AddTaskDialog {
       return;
     }
     if (this.confirmCallback) {
-      this.confirmCallback(title, this.pomodoroCount, this.selectedPriority, this.collectionId ?? 0);
+      this.confirmCallback(
+        title,
+        this.pomodoroCount,
+        this.selectedPriority,
+        this.collectionId ?? 0,
+        this.selectedTaskType,
+        // 习惯性任务不传日期
+        this.selectedTaskType === 0 ? this.startDate : 0,
+        this.selectedTaskType === 0 ? this.endDate : 0
+      );
     }
     this.closeDialog();
+  }
+
+  private formatDate(timestamp: number): string {
+    if (timestamp <= 0) return '请选择';
+    const d = new Date(timestamp);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 }
 
@@ -258,7 +389,15 @@ struct AddCollectionDialog {
 // 回调类型别名
 // ============================================================
 
-type AddTaskCallback = (title: string, pomodoros: number, priority: number, collectionId: number) => void;
+type AddTaskCallback = (
+  title: string,
+  pomodoros: number,
+  priority: number,
+  collectionId: number,
+  taskType: number,
+  startDate: number,
+  endDate: number
+) => void;
 
 // ============================================================
 // TaskPage —— 任务管理主页面
@@ -685,9 +824,13 @@ export struct TaskPage {
     const colId = col ? col.id : 0;
     const dialogController = new CustomDialogController({
       builder: AddTaskDialog({
-        confirmCallback: (title: string, pomodoros: number, priority: number, collectionId: number) => {
+        confirmCallback: (
+          title: string, pomodoros: number, priority: number,
+          collectionId: number, taskType: number,
+          startDate: number, endDate: number
+        ) => {
           dialogController.close();
-          this.onAddTaskConfirm(title, pomodoros, priority, collectionId);
+          this.onAddTaskConfirm(title, pomodoros, priority, collectionId, taskType, startDate, endDate);
         },
         onDialogClose: () => {
           dialogController.close();
@@ -703,9 +846,17 @@ export struct TaskPage {
     dialogController.open();
   }
 
-  private async onAddTaskConfirm(title: string, pomodoros: number, priority: number, collectionId: number): Promise<void> {
+  private async onAddTaskConfirm(
+    title: string,
+    pomodoros: number,
+    priority: number,
+    collectionId: number,
+    taskType: number,
+    startDate: number,
+    endDate: number
+  ): Promise<void> {
     try {
-      await this.taskViewModel.addTask(title, pomodoros, priority, collectionId);
+      await this.taskViewModel.addTask(title, pomodoros, priority, collectionId, taskType, startDate, endDate);
       this.syncFromViewModel();
       promptAction.showToast({ message: '任务已添加', duration: 1500 });
     } catch (err) {
