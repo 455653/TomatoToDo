@@ -192,7 +192,7 @@ export class TaskDao {
     try {
       const store = await DbHelper.getInstance().getRdb();
       const sql = `SELECT * FROM tasks WHERE user_id = ? AND task_type = 0
-        AND start_date <= ? AND end_date >= ?
+        AND start_date <= ? AND end_date >= ? AND done = 0
         ORDER BY priority DESC, created_at DESC`;
       const rs = await store.querySql(sql, [userId.toString(), rangeStart.toString(), rangeEnd.toString()]);
       const tasks: Task[] = [];

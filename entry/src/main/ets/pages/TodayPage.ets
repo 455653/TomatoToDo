@@ -334,6 +334,10 @@ export struct TodayPage {
     try {
       await this.viewModel.toggleMilestoneTask(task);
       this.syncFromViewModel();
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: '操作失败', duration: 1500 });
     }
@@ -343,6 +347,10 @@ export struct TodayPage {
     try {
       await this.viewModel.toggleHabitTask(task);
       this.syncFromViewModel();
+      emitter.emit(
+        { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+        { data: {} }
+      );
     } catch (err) {
       promptAction.showToast({ message: '打卡失败', duration: 1500 });
     }
