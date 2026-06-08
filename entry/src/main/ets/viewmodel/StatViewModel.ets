@@ -45,6 +45,8 @@ export class StatViewModel {
 
   private sessionDao: SessionDao = new SessionDao();
   private taskDao: TaskDao = new TaskDao();
+  /** 已完成会话缓存：月份切换时复用，无需重新查库 */
+  private completedSessions: Session[] = [];
 
   /**
    * 一次性加载全部统计维度
@@ -70,6 +72,7 @@ export class StatViewModel {
 
       // 仅统计完整完成的 session
       const completed = this.filterCompleted(allSessions);
+      this.completedSessions = completed;  // 缓存供月份切换时复用
       console.log(`[StatViewModel] ${completed.length} completed sessions`);
 
       // 各维度计算
@@ -80,7 +83,8 @@ export class StatViewModel {
       this.monthHeatmap = this.calcMonthHeatmap(completed);
       console.log(`[StatViewModel] weekData=${this.weekData.length} days, monthHeatmap=${this.monthHeatmap.size} entries`);
 
-      this.calcMonthStats(completed);
+      const now = new Date();
+      this.calcMonthStats(completed, now.getFullYear(), now.getMonth() + 1);
       console.log(`[StatViewModel] Month: count=${this.monthFocusCount}, hours=${this.monthHours}, streak=${this.monthStreakDays}`);
 
       this.calcTotal(completed);
@@ -206,9 +210,10 @@ export class StatViewModel {
   // 累计统计
   // ═══════════════════════════════════════════════
 
-  private calcMonthStats(completed: Session[]): void {
-    const monthStart = this.getMonthStartMs();
-    const monthSessions = completed.filter(s => s.startTime >= monthStart);
+  private calcMonthStats(completed: Session[], year: number, month: number): void {
+    const monthStart = this.getMonthStartMs(year, month);
+    const monthEnd = this.getMonthEndMs(year, month);
+    const monthSessions = completed.filter(s => s.startTime >= monthStart && s.startTime < monthEnd);
 
     this.monthFocusCount = monthSessions.length;
 
@@ -218,8 +223,16 @@ export class StatViewModel {
     }
     this.monthHours = Math.floor(totalSecs / 3600);
 
-    // 本月连续天数 = 从今天往前推，连续专注的天数（仅在本月范围内）
-    this.monthStreakDays = this.calcCurrentStreak(monthSessions);
+    // 本月连续天数
+    const now = new Date();
+    const isCurrentMonth = (year === now.getFullYear() && month === (now.getMonth() + 1));
+    if (isCurrentMonth) {
+      // 当前月份：从今天往前推的连续天数
+      this.monthStreakDays = this.calcCurrentStreak(monthSessions);
+    } else {
+      // 历史月份：该月内最长连续天数
+      this.monthStreakDays = this.calcStreak(monthSessions);
+    }
   }
 
   private calcTotal(completed: Session[]): void {
@@ -230,6 +243,23 @@ export class StatViewModel {
       totalSecs += s.durationSeconds;
     }
     this.totalHours = Math.floor(totalSecs / 3600);
+  }
+
+  // ═══════════════════════════════════════════════
+  // 月份切换时复用已加载数据，无需重新查库
+  // ═══════════════════════════════════════════════
+
+  /**
+   * 重新计算指定月份的统计数据
+   * 复用 loadAll() 中缓存的 completedSessions，避免重复查询数据库
+   */
+  recalcMonthStats(year: number, month: number): void {
+    if (this.completedSessions.length === 0) {
+      console.log('[StatViewModel] recalcMonthStats: no sessions loaded, skipping');
+      return;
+    }
+    this.calcMonthStats(this.completedSessions, year, month);
+    console.log(`[StatViewModel] recalcMonthStats: ${year}-${month} → count=${this.monthFocusCount}, hours=${this.monthHours}, streak=${this.monthStreakDays}`);
   }
 
   // ═══════════════════════════════════════════════
@@ -320,12 +350,20 @@ export class StatViewModel {
     return now.getTime();
   }
 
-  /** 本月1日 00:00:00 毫秒时间戳 */
-  private getMonthStartMs(): number {
-    const now = new Date();
-    now.setDate(1);
-    now.setHours(0, 0, 0, 0);
-    return now.getTime();
+  /** 指定年月 1日 00:00:00 毫秒时间戳 */
+  private getMonthStartMs(year: number, month: number): number {
+    // JS Date 月份 0-indexed：6月 → new Date(2026, 5, 1)
+    const d = new Date(year, month - 1, 1);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  /** 指定年月下月1日 00:00:00（即本月结束时刻，用于区间过滤） */
+  private getMonthEndMs(year: number, month: number): number {
+    // month=12 → new Date(year, 12, 1) = 次年1月1日（JS 自动进位）
+    const d = new Date(year, month, 1);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
   }
 
   /** 过滤已完成会话 */

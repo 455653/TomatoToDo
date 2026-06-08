@@ -23,7 +23,7 @@ export struct StatPage {
   /** 热力图展示的年份 */
   @State currentYear: number = new Date().getFullYear();
   /** 热力图展示的月份 1~12 */
-  @State currentMonth: number = new Date().getMonth() + 1;
+  @State @Watch('onMonthChange') currentMonth: number = new Date().getMonth() + 1;
 
   // UI 绑定的状态变量
   @State todayFocusCount: number = 0;
@@ -41,6 +41,8 @@ export struct StatPage {
   
   // 组件唯一标识，用于强制刷新子组件
   @State refreshId: string = 'initial';
+  // 累计成就区块重建密钥：月份切换时递增，强制 BuildCumulative 重建
+  @State cumulativeKey: string = 'cumulative_initial';
   // 数据是否已加载完成（解决 Tab 缓存导致 @State 文本不更新的问题）
   @State isDataLoaded: boolean = false;
   // 数据加载中
@@ -72,6 +74,24 @@ export struct StatPage {
     console.log('[StatPage] aboutToReappear called, reloading data...');
     this.isDataLoaded = false;
     await this.loadData();
+  }
+
+  /**
+   * 月份切换回调 —— @Watch 触发
+   * 当 currentMonth 变化时（无论是点击 ◀/▶ 还是其他方式），
+   * 自动重新计算选中月份的统计并强制刷新累计成就区块
+   */
+  onMonthChange(): void {
+    console.log(`[StatPage] onMonthChange: ${this.currentYear}-${this.currentMonth}`);
+    if (this.isDataLoaded) {
+      this.viewModel.recalcMonthStats(this.currentYear, this.currentMonth);
+      this.monthFocusCount = this.viewModel.monthFocusCount;
+      this.monthHours = this.viewModel.monthHours;
+      this.monthStreakDays = this.viewModel.monthStreakDays;
+      // 更新 cumulativeKey → 强制累计成就区块的 Column 销毁→重建
+      this.cumulativeKey = `cumulative_${this.currentYear}_${this.currentMonth}_${Date.now()}`;
+      console.log(`[StatPage] onMonthChange synced: focusCount=${this.monthFocusCount}, hours=${this.monthHours}, streak=${this.monthStreakDays}`);
+    }
   }
 
   /**
@@ -205,11 +225,14 @@ export struct StatPage {
         Divider().margin({ top: 16, bottom: 12 })
 
         this.BuildSectionTitle('累计成就')
-        if (this.isDataLoaded) {
-          this.BuildCumulative()
-        } else {
-          this.BuildCumulativeLoading()
+        Column() {
+          if (this.isDataLoaded) {
+            this.BuildCumulative()
+          } else {
+            this.BuildCumulativeLoading()
+          }
         }
+        .key(this.cumulativeKey)
 
         Column().height(24)
       }
@@ -436,6 +459,7 @@ export struct StatPage {
     } else {
       this.currentMonth--;
     }
+    this.recalcMonthStats();
   }
 
   private nextMonth(): void {
@@ -453,5 +477,23 @@ export struct StatPage {
     } else {
       this.currentMonth++;
     }
+    this.recalcMonthStats();
+  }
+
+  /**
+   * 月份切换后重新计算该月的统计数据
+   * 复用 StatViewModel 中已缓存的 completedSessions，无需重新查询数据库
+   */
+  private recalcMonthStats(): void {
+    this.viewModel.recalcMonthStats(this.currentYear, this.currentMonth);
+    // 同步月份相关字段到 UI
+    this.monthFocusCount = this.viewModel.monthFocusCount;
+    this.monthHours = this.viewModel.monthHours;
+    this.monthStreakDays = this.viewModel.monthStreakDays;
+    // 更新 refreshId 强制 MonthHeatmap / WeekChart / 整棵子树完全重建
+    this.refreshId = Date.now().toString();
+    // 更新 cumulativeKey 强制累计成就区块销毁→重建（绕过 @Builder 缓存）
+    this.cumulativeKey = `cumulative_${this.currentYear}_${this.currentMonth}_${Date.now()}`;
+    console.log(`[StatPage] recalcMonthStats: ${this.currentYear}-${this.currentMonth} → focusCount=${this.monthFocusCount}, hours=${this.monthHours}, streak=${this.monthStreakDays}`);
   }
 }

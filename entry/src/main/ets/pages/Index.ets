@@ -16,6 +16,13 @@ struct Index {
   @State currentTabIndex: number = 0;
   /** Tab 控制器 */
   private tabsController: TabsController = new TabsController();
+  /**
+   * 统计 Tab 重建密钥
+   * 每次切换到统计 Tab 时递增，强制 StatPage 销毁→重建，
+   * 从而完全绕过 TabsCacheMode.CACHE_BOTH_SIDE 的缓存问题。
+   * 这是经过 emitter / AppStorage 两种方案均失败后的终极解决方案。
+   */
+  @State statTabKey: number = 0;
 
   /**
    * 页面出现时检查登录态
@@ -70,6 +77,7 @@ struct Index {
       TabContent() {
         StatPage()
       }
+      .key(`stat_tab_${this.statTabKey}`)
       .tabBar(this.TabBarStats())
 
       // ═══════════════════════════════════════
@@ -86,10 +94,9 @@ struct Index {
     .onChange((index: number) => {
       this.currentTabIndex = index;
       if (index === 3) {
-        // 通过 AppStorage 通知 StatPage 刷新数据
-        // （比 emitter 更可靠，不受 TabsCacheMode.CACHE_BOTH_SIDE 影响）
-        const trigger = (AppStorage.get<number>('statRefreshTrigger') ?? 0) + 1;
-        AppStorage.setOrCreate('statRefreshTrigger', trigger);
+        // 递增密钥 → 强制销毁旧 StatPage → 创建新 StatPage → aboutToAppear → loadData()
+        // 这完全绕过了 TabsCacheMode.CACHE_BOTH_SIDE 的缓存问题
+        this.statTabKey++;
       }
     })
     .cachedMaxCount(5, TabsCacheMode.CACHE_BOTH_SIDE)
