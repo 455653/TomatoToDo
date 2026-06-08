@@ -7,6 +7,7 @@ import { TaskPage } from './TaskPage';
 import { TodayPage } from './TodayPage';
 import { TimerPage } from './TimerPage';
 import { StatPage } from './StatPage';
+import { common } from '@kit.AbilityKit';
 
 @Entry
 @Component
@@ -20,9 +21,17 @@ struct Index {
    * 页面出现时检查登录态
    */
   aboutToAppear(): void {
-    if (!AuthGuard.isLoggedIn()) {
-      router.replaceUrl({ url: 'pages/LoginPage' });
-    }
+    const context = getContext(this) as common.Context;
+    AuthGuard.init(context).then(() => {
+      console.log('[Index] AuthGuard 已初始化');
+      if (!AuthGuard.isLoggedIn()) {
+        router.replaceUrl({ url: 'pages/LoginPage' }).catch((err: Error) => {
+          console.error('[Index] 路由跳转失败', JSON.stringify(err));
+        });
+      }
+    }).catch((err: Error) => {
+      console.error('[Index] AuthGuard 初始化失败', JSON.stringify(err));
+    });
   }
 
   build() {
@@ -76,6 +85,12 @@ struct Index {
     .animationDuration(0)
     .onChange((index: number) => {
       this.currentTabIndex = index;
+      if (index === 3) {
+        // 通过 AppStorage 通知 StatPage 刷新数据
+        // （比 emitter 更可靠，不受 TabsCacheMode.CACHE_BOTH_SIDE 影响）
+        const trigger = (AppStorage.get<number>('statRefreshTrigger') ?? 0) + 1;
+        AppStorage.setOrCreate('statRefreshTrigger', trigger);
+      }
     })
     .cachedMaxCount(5, TabsCacheMode.CACHE_BOTH_SIDE)
     .width('100%')

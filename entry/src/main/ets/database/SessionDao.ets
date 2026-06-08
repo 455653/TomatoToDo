@@ -29,6 +29,9 @@ export class SessionDao {
    */
   async insert(session: CreateSessionParams): Promise<number> {
     try {
+      console.log(`[SessionDao] ===== 插入会话 =====`);
+      console.log(`[SessionDao] userId=${session.userId}, taskId=${session.taskId}, duration=${session.durationSeconds}s, completed=${session.completed}`);
+      
       const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
       const valueBucket: relationalStore.ValuesBucket = {
         'user_id': session.userId,
@@ -40,8 +43,10 @@ export class SessionDao {
         'completed': session.completed,
       };
       const rowId: number = await store.insert('sessions', valueBucket);
+      console.log(`[SessionDao] 插入成功! rowId=${rowId}`);
       return rowId;
     } catch (err) {
+      console.error(`[SessionDao] 插入失败: ${JSON.stringify(err)}`);
       throw new Error(`会话插入失败: ${JSON.stringify(err)}`);
     }
   }
@@ -53,6 +58,9 @@ export class SessionDao {
    */
   async findByUser(userId: number, fromTime?: number): Promise<Session[]> {
     try {
+      console.log(`[SessionDao] ===== 查询会话 =====`);
+      console.log(`[SessionDao] userId=${userId}, fromTime=${fromTime}`);
+      
       const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
       const from = fromTime ?? 0;
       const sql = 'SELECT * FROM sessions WHERE user_id = ? AND start_time >= ? ORDER BY start_time DESC';
@@ -63,8 +71,16 @@ export class SessionDao {
         sessions.push(this.rowToSession(resultSet));
       }
       resultSet.close();
+      
+      console.log(`[SessionDao] 查询到 ${sessions.length} 条会话`);
+      for (let i = 0; i < Math.min(sessions.length, 5); i++) {
+        const s = sessions[i];
+        console.log(`[SessionDao] 会话 ${i+1}: userId=${s.userId}, duration=${s.durationSeconds}s, completed=${s.completed}, startTime=${s.startTime}`);
+      }
+      
       return sessions;
     } catch (err) {
+      console.error(`[SessionDao] 查询失败: ${JSON.stringify(err)}`);
       throw new Error(`会话查询失败: ${JSON.stringify(err)}`);
     }
   }

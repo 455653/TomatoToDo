@@ -2,11 +2,12 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { DbHelper } from '../database/DbHelper';
+import { AuthGuard } from '../utils/AuthGuard';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
-  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+  async onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): Promise<void> {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
@@ -14,6 +15,8 @@ export default class EntryAbility extends UIAbility {
     }
     // 初始化数据库辅助类
     DbHelper.getInstance().init(this.context.getApplicationContext());
+    // 初始化 AuthGuard，恢复登录状态
+    await AuthGuard.init(this.context.getApplicationContext());
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 

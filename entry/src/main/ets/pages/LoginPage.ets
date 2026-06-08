@@ -5,6 +5,7 @@ import { router } from '@kit.ArkUI';
 import { promptAction } from '@kit.ArkUI';
 import { AuthViewModel, AuthResult } from '../viewmodel/AuthViewModel';
 import { AuthGuard } from '../utils/AuthGuard';
+import { common } from '@kit.AbilityKit';
 
 /** Tab 索引：登录 / 注册 */
 const TAB_LOGIN = 0;
@@ -33,7 +34,15 @@ struct LoginPage {
    * 页面即将出现时，检查是否已登录
    * 若已登录则直接跳转 Index
    */
-  aboutToAppear(): void {
+  async aboutToAppear(): Promise<void> {
+    try {
+      const context = getContext(this) as common.Context;
+      await AuthGuard.init(context);
+      console.log('[LoginPage] AuthGuard 已初始化');
+    } catch (err) {
+      console.error('[LoginPage] AuthGuard 初始化失败', JSON.stringify(err));
+    }
+    
     if (AuthGuard.isLoggedIn()) {
       router.replaceUrl({ url: 'pages/Index' });
     }

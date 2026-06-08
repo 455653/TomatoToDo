@@ -2,6 +2,7 @@
 // 番茄钟核心状态机 — @ObservedV2 — 正向计时 + 手动休息
 
 import { emitter } from '@kit.BasicServicesKit';
+import { promptAction } from '@kit.ArkUI';
 import { Task } from '../model/TaskModel';
 import { Session } from '../model/SessionModel';
 import { SessionDao, CreateSessionParams } from '../database/SessionDao';
@@ -26,6 +27,7 @@ const REST_MINUTES = 5;
 const EVENT_CMD = 1001;
 const EVENT_NOTIFY = 1002;
 const EVENT_TICK = 1003;
+const EVENT_TASK_CHANGED = 2001;
 
 /** 发给 TimerService 的命令 */
 interface TimerCmd {
@@ -126,11 +128,24 @@ export class TimerViewModel {
       return;
     }
 
-    // 如果正在专注或从专注暂停，写入 session
+    // 如果正在专注或从专注暂停，判断是否达到最低记录门槛
     if (this.state === TimerState.FOCUSING ||
       (this.state === TimerState.PAUSED && this.previousState === TimerState.FOCUSING)) {
-      await this.writeSession(true);
-      this.todayFocusCount++;
+      if (this.elapsedSeconds < 60) {
+        promptAction.showToast({ message: '专注不足1分钟，未记录', duration: 1500 });
+      } else {
+        await this.writeSession(true);
+        // 先从 DB 重新加载今日统计，确保数据一致
+        await this.loadTodayStats();
+        // 通过 emitter 通知 TodayPage 等组件刷新
+        emitter.emit(
+          { eventId: EVENT_TASK_CHANGED, priority: emitter.EventPriority.LOW },
+          { data: {} }
+        );
+        // 同时通过 AppStorage 通知 StatPage 刷新（跨 Tab 缓存通信）
+        const trigger = (AppStorage.get<number>('statRefreshTrigger') ?? 0) + 1;
+        AppStorage.setOrCreate('statRefreshTrigger', trigger);
+      }
     }
 
     this.state = TimerState.IDLE;
@@ -138,7 +153,6 @@ export class TimerViewModel {
     this.elapsedSeconds = 0;
     this.sendCmd('stop');
     this.emitTick(-1, 'STOPPED');
-    await this.loadTodayStats();
   }
 
   /**

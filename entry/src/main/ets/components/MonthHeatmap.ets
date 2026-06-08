@@ -36,11 +36,34 @@ interface CellInfo {
 @Component
 export struct MonthHeatmap {
   /** 全量热力数据 Map<"YYYY-MM-DD", count> */
-  @Prop data: Map<string, number> = new Map();
+  @Prop @Watch('onDataChange') data: Map<string, number> = new Map();
   /** 年份 */
-  @Prop year: number = 2024;
+  @Prop @Watch('onDateChange') year: number = 2024;
   /** 月份 1~12 */
-  @Prop month: number = 1;
+  @Prop @Watch('onDateChange') month: number = 1;
+  /** 用于强制刷新的 refreshKey */
+  @Prop @Watch('onRefreshKeyChange') refreshKey: string = '';
+
+  /**
+   * 数据变化时重新计算
+   */
+  onDataChange(): void {
+    // Map 变化时，ArkUI 会自动重新渲染 build()
+  }
+
+  /**
+   * 年月变化时重新计算
+   */
+  onDateChange(): void {
+    // 年月变化时，ArkUI 会自动重新渲染 build()
+  }
+
+  /**
+   * refreshKey 变化时重新渲染
+   */
+  onRefreshKeyChange(): void {
+    // refreshKey 变化时，ArkUI 会自动重新渲染 build()
+  }
 
   /**
    * 构建日历网格（行 × 7 列）
@@ -157,11 +180,12 @@ export struct MonthHeatmap {
               .onClick(() => {
                 this.onDayClick(cell.day, cell.count);
               })
-            }, (cell: CellInfo, colIdx: number) => `${rowIdx}_${colIdx}`)
+            }, (cell: CellInfo, colIdx: number) => `${rowIdx}_${colIdx}_${this.refreshKey}`)
           }
-        }, (row: CellInfo[], rowIdx: number) => rowIdx.toString())
+        }, (row: CellInfo[], rowIdx: number) => `${rowIdx}_${this.refreshKey}`)
       }
     }
     .alignItems(HorizontalAlign.Center)
+    .key(this.refreshKey)
   }
 }

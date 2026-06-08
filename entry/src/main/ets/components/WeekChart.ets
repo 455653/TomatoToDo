@@ -34,16 +34,48 @@ interface Point2D {
 @Component
 export struct WeekChart {
   /** 7 天数据（周一 ~ 周日） */
-  @Prop data: DayData[] = [];
+  @Prop @Watch('onDataChange') data: DayData[] = [];
+  /** 用于强制刷新的 refreshKey */
+  @Prop @Watch('onRefreshKeyChange') refreshKey: string = '';
 
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
+  private isReady: boolean = false;
+
+  /**
+   * 数据变化时重绘
+   */
+  onDataChange(): void {
+    if (this.isReady) {
+      this.drawChart();
+    }
+  }
+
+  /**
+   * refreshKey 变化时重绘
+   */
+  onRefreshKeyChange(): void {
+    if (this.isReady) {
+      this.drawChart();
+    }
+  }
+
+  /**
+   * 组件出现时重绘
+   */
+  aboutToAppear(): void {
+    if (this.isReady) {
+      this.drawChart();
+    }
+  }
 
   build() {
     Canvas(this.ctx)
       .width('100%')
       .height(CHART_HEIGHT)
+      .key(this.refreshKey)
       .onReady(() => {
+        this.isReady = true;
         this.drawChart();
       })
   }
@@ -52,9 +84,13 @@ export struct WeekChart {
    * 主绘制入口
    */
   private drawChart(): void {
+    console.log('[WeekChart] drawChart() called');
+    console.log('[WeekChart] data:', JSON.stringify(this.data));
+    
     const w = this.ctx.width;
     const h = CHART_HEIGHT;
     if (w <= 0) {
+      console.log('[WeekChart] width <= 0, skip drawing');
       return;
     }
 

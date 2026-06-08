@@ -25,6 +25,7 @@ export class StatViewModel {
   @Trace todayFocusCount: number = 0;
   @Trace todayMinutes: number = 0;
   @Trace todayDoneTasks: number = 0;
+  @Trace todayQualityScore: number = 0;
 
   // ═════════ 本周 ═════════
   @Trace weekData: DayData[] = [];
@@ -37,6 +38,11 @@ export class StatViewModel {
   @Trace totalHours: number = 0;
   @Trace streakDays: number = 0;
 
+  // ═════════ 本月累计 ═════════
+  @Trace monthFocusCount: number = 0;
+  @Trace monthHours: number = 0;
+  @Trace monthStreakDays: number = 0;
+
   private sessionDao: SessionDao = new SessionDao();
   private taskDao: TaskDao = new TaskDao();
 
@@ -45,7 +51,9 @@ export class StatViewModel {
    */
   async loadAll(): Promise<void> {
     const userId = AuthGuard.getCurrentUserId();
+    console.log(`[StatViewModel] loadAll called, userId=${userId}`);
     if (userId <= 0) {
+      console.log('[StatViewModel] userId invalid, skipping');
       return;
     }
 
@@ -58,15 +66,28 @@ export class StatViewModel {
       const allSessions: Session[] = results[0] as Session[];
       const allTasks: Task[] = results[1] as Task[];
 
+      console.log(`[StatViewModel] Loaded ${allSessions.length} sessions, ${allTasks.length} tasks`);
+
       // 仅统计完整完成的 session
       const completed = this.filterCompleted(allSessions);
+      console.log(`[StatViewModel] ${completed.length} completed sessions`);
 
       // 各维度计算
-      this.calcToday(completed, allTasks);
+      this.calcToday(completed);
+      console.log(`[StatViewModel] Today: count=${this.todayFocusCount}, minutes=${this.todayMinutes}, tasks=${this.todayDoneTasks}`);
+
       this.weekData = this.calcWeekData(completed);
       this.monthHeatmap = this.calcMonthHeatmap(completed);
+      console.log(`[StatViewModel] weekData=${this.weekData.length} days, monthHeatmap=${this.monthHeatmap.size} entries`);
+
+      this.calcMonthStats(completed);
+      console.log(`[StatViewModel] Month: count=${this.monthFocusCount}, hours=${this.monthHours}, streak=${this.monthStreakDays}`);
+
       this.calcTotal(completed);
+      console.log(`[StatViewModel] Total: count=${this.totalFocusCount}, hours=${this.totalHours}`);
+
       this.streakDays = this.calcStreak(completed);
+      console.log(`[StatViewModel] Max streak: ${this.streakDays}`);
     } catch (err) {
       console.error('[StatViewModel] loadAll error:', JSON.stringify(err));
     }
@@ -76,12 +97,15 @@ export class StatViewModel {
   // 今日统计
   // ═══════════════════════════════════════════════
 
-  private calcToday(completed: Session[], allTasks: Task[]): void {
+  private calcToday(completed: Session[]): void {
     const todayStart = this.getTodayStartMs();
+    console.log(`[StatViewModel] calcToday: todayStart=${todayStart} (${new Date(todayStart).toLocaleString()})`);
+
     const todaySessions: Session[] = [];
     for (const s of completed) {
       if (s.startTime >= todayStart) {
         todaySessions.push(s);
+        console.log(`[StatViewModel] Today session: startTime=${s.startTime} (${new Date(s.startTime).toLocaleString()}), duration=${s.durationSeconds}s`);
       }
     }
 
@@ -101,6 +125,26 @@ export class StatViewModel {
       }
     }
     this.todayDoneTasks = taskIdSet.size;
+
+    // 质量分计算
+    if (this.todayFocusCount === 0) {
+      this.todayQualityScore = 0;
+    } else {
+      let score = 50; // 基础分
+      
+      // 完成率加成：因当前仅存储有效专注，使用专注次数进行合理评估，每次加10分，最高30分
+      let countBonus = Math.min(this.todayFocusCount * 10, 30);
+      score += countBonus;
+      
+      // 时长加成：每 10 分钟加 5 分，最高 20 分
+      let durationBonus = Math.min(Math.floor(this.todayMinutes / 10) * 5, 20);
+      score += durationBonus;
+      
+      // 上限 100 分
+      this.todayQualityScore = Math.min(score, 100);
+    }
+
+    console.log(`[StatViewModel] calcToday result: focusCount=${this.todayFocusCount}, totalSecs=${totalSecs}, minutes=${this.todayMinutes}, tasks=${this.todayDoneTasks}, qualityScore=${this.todayQualityScore}`);
   }
 
   // ═══════════════════════════════════════════════
@@ -114,17 +158,17 @@ export class StatViewModel {
     for (let i = 0; i < 7; i++) {
       const dayStart = mondayMs + i * DAY_MS;
       const dayEnd = dayStart + DAY_MS;
-      let dayMinutes = 0;
+      let totalSecs = 0;
       for (const s of completed) {
         if (s.startTime >= dayStart && s.startTime < dayEnd) {
-          dayMinutes += Math.floor(s.durationSeconds / 60);
+          totalSecs += s.durationSeconds;
         }
       }
       const d = new Date(dayStart);
       const month = d.getMonth() + 1;
       const dateNum = d.getDate();
       const dateStr = `${month.toString().padStart(2, '0')}-${dateNum.toString().padStart(2, '0')}`;
-      result.push({ date: dateStr, minutes: dayMinutes });
+      result.push({ date: dateStr, minutes: Math.floor(totalSecs / 60) });
     }
     return result;
   }
@@ -135,21 +179,48 @@ export class StatViewModel {
 
   private calcMonthHeatmap(completed: Session[]): Map<string, number> {
     const map = new Map<string, number>();
+    const daySecondsMap = new Map<string, number>();
+    
     for (const s of completed) {
       const d = new Date(s.startTime);
       const key =
         `${d.getFullYear()}-` +
         `${(d.getMonth() + 1).toString().padStart(2, '0')}-` +
         `${d.getDate().toString().padStart(2, '0')}`;
-      const prev = map.get(key) ?? 0;
-      map.set(key, prev + Math.floor(s.durationSeconds / 60));
+      const prev = daySecondsMap.get(key) ?? 0;
+      daySecondsMap.set(key, prev + s.durationSeconds);
     }
+    
+    // 再统一计算分钟数
+    const keys = Array.from(daySecondsMap.keys());
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const totalSecs = daySecondsMap.get(key) as number;
+      map.set(key, Math.floor(totalSecs / 60));
+    }
+    
     return map;
   }
 
   // ═══════════════════════════════════════════════
   // 累计统计
   // ═══════════════════════════════════════════════
+
+  private calcMonthStats(completed: Session[]): void {
+    const monthStart = this.getMonthStartMs();
+    const monthSessions = completed.filter(s => s.startTime >= monthStart);
+
+    this.monthFocusCount = monthSessions.length;
+
+    let totalSecs = 0;
+    for (const s of monthSessions) {
+      totalSecs += s.durationSeconds;
+    }
+    this.monthHours = Math.floor(totalSecs / 3600);
+
+    // 本月连续天数 = 从今天往前推，连续专注的天数（仅在本月范围内）
+    this.monthStreakDays = this.calcCurrentStreak(monthSessions);
+  }
 
   private calcTotal(completed: Session[]): void {
     this.totalFocusCount = completed.length;
@@ -194,6 +265,40 @@ export class StatViewModel {
     return maxStreak;
   }
 
+  /**
+   * 当前连续专注天数 —— 从今天往前推，每天都专注才算连续
+   * 与 calcStreak（最长连续）不同，此方法计算的是"当前连续"
+   */
+  private calcCurrentStreak(completed: Session[]): number {
+    if (completed.length === 0) {
+      return 0;
+    }
+
+    // 归一到每天 0 点 → 去重
+    const daySet = new Set<number>();
+    for (const s of completed) {
+      const d = new Date(s.startTime);
+      d.setHours(0, 0, 0, 0);
+      daySet.add(d.getTime());
+    }
+
+    const todayStart = this.getTodayStartMs();
+    // 今天必须有专注，否则当前连续为 0
+    if (!daySet.has(todayStart)) {
+      return 0;
+    }
+
+    // 从今天往前数
+    let streak = 0;
+    let checkDay = todayStart;
+    while (daySet.has(checkDay)) {
+      streak++;
+      checkDay -= DAY_MS;
+    }
+
+    return streak;
+  }
+
   // ═══════════════════════════════════════════════
   // 工具方法
   // ═══════════════════════════════════════════════
@@ -215,6 +320,14 @@ export class StatViewModel {
     return now.getTime();
   }
 
+  /** 本月1日 00:00:00 毫秒时间戳 */
+  private getMonthStartMs(): number {
+    const now = new Date();
+    now.setDate(1);
+    now.setHours(0, 0, 0, 0);
+    return now.getTime();
+  }
+
   /** 过滤已完成会话 */
   private filterCompleted(sessions: Session[]): Session[] {
     const result: Session[] = [];
@@ -223,6 +336,7 @@ export class StatViewModel {
         result.push(s);
       }
     }
+    console.log(`[StatViewModel] filterCompleted: ${sessions.length} total → ${result.length} completed`);
     return result;
   }
 }

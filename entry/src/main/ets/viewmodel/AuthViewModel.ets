@@ -99,7 +99,7 @@ export class AuthViewModel {
       }
 
       // --- 4. 登录成功 ---
-      AuthGuard.login(user.id);
+      await AuthGuard.login(user.id);
       return { ok: true, msg: '登录成功' };
     } catch (err) {
       return { ok: false, msg: `登录异常: ${JSON.stringify(err)}` };
