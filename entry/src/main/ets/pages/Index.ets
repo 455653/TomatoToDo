@@ -7,6 +7,7 @@ import { TaskPage } from './TaskPage';
 import { TodayPage } from './TodayPage';
 import { TimerPage } from './TimerPage';
 import { StatPage } from './StatPage';
+import { ProfilePage } from './ProfilePage';
 import { common } from '@kit.AbilityKit';
 
 @Entry
@@ -81,10 +82,10 @@ struct Index {
       .tabBar(this.TabBarStats())
 
       // ═══════════════════════════════════════
-      // Tab 4：我的（占位）
+      // Tab 4：我的
       // ═══════════════════════════════════════
       TabContent() {
-        this.SettingsPlaceholder()
+        ProfilePage()
       }
       .tabBar(this.TabBarProfile())
     }
@@ -193,26 +194,4 @@ struct Index {
     .alignItems(HorizontalAlign.Center)
   }
 
-  // ═══════════════════════════════════════════
-  // "我的" 占位页
-  // ═══════════════════════════════════════════
-
-  @Builder
-  SettingsPlaceholder() {
-    Column() {
-      Text('👤')
-        .fontSize(48)
-        .fontColor('#CCCCCC')
-        .margin({ bottom: 16 })
-
-      Text('设置功能即将开放')
-        .fontSize(16)
-        .fontColor('#999999')
-    }
-    .width('100%')
-    .height('100%')
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
-    .backgroundColor('#FFFFFF')
-  }
 }

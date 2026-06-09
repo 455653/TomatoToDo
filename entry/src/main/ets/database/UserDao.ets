@@ -59,4 +59,52 @@ export class UserDao {
       throw new Error(`用户查询失败: ${JSON.stringify(err)}`);
     }
   }
+
+  /**
+   * 根据用户 ID 查找用户
+   * @param id 用户 ID
+   * @returns 找到的用户对象，不存在则返回 null
+   */
+  async findById(id: number): Promise<User | null> {
+    try {
+      const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
+      const predicates: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('users');
+      predicates.equalTo('id', id);
+      const resultSet: relationalStore.ResultSet = await store.query(predicates);
+
+      let user: User | null = null;
+      if (resultSet.goToFirstRow()) {
+        user = {
+          id: resultSet.getLong(resultSet.getColumnIndex('id')),
+          username: resultSet.getString(resultSet.getColumnIndex('username')),
+          passwordHash: resultSet.getString(resultSet.getColumnIndex('password_hash')),
+          createdAt: resultSet.getLong(resultSet.getColumnIndex('created_at')),
+        };
+      }
+      resultSet.close();
+      return user;
+    } catch (err) {
+      throw new Error(`用户查询失败: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * 更新用户密码哈希
+   * @param id 用户 ID
+   * @param newPasswordHash 新的 SHA-256 密码哈希
+   */
+  async updatePassword(id: number, newPasswordHash: string): Promise<boolean> {
+    try {
+      const store: relationalStore.RdbStore = await DbHelper.getInstance().getRdb();
+      const valueBucket: relationalStore.ValuesBucket = {
+        'password_hash': newPasswordHash,
+      };
+      const predicates: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('users');
+      predicates.equalTo('id', id);
+      const rowsAffected: number = await store.update(valueBucket, predicates);
+      return rowsAffected > 0;
+    } catch (err) {
+      throw new Error(`密码更新失败: ${JSON.stringify(err)}`);
+    }
+  }
 }

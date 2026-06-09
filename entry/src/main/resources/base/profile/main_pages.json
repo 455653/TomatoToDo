@@ -5,6 +5,7 @@
     "pages/TaskPage",
     "pages/TodayPage",
     "pages/TimerPage",
-    "pages/StatPage"
+    "pages/StatPage",
+    "pages/ChangePasswordPage"
   ]
 }

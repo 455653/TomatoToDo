@@ -132,6 +132,55 @@ export class AuthViewModel {
   }
 
   /**
+   * 修改密码
+   * @param oldPassword 旧密码
+   * @param newPassword 新密码
+   * @returns {ok, msg} 结果
+   */
+  async changePassword(oldPassword: string, newPassword: string): Promise<AuthResult> {
+    try {
+      // --- 1. 获取当前用户 ---
+      const userId: number = AuthGuard.getCurrentUserId();
+      if (userId <= 0) {
+        return { ok: false, msg: '请先登录' };
+      }
+
+      const user: User | null = await this.userDao.findById(userId);
+      if (!user) {
+        return { ok: false, msg: '用户不存在' };
+      }
+
+      // --- 2. 前端校验新密码 ---
+      if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
+        return { ok: false, msg: `新密码至少需要 ${PASSWORD_MIN_LENGTH} 位` };
+      }
+      if (oldPassword === newPassword) {
+        return { ok: false, msg: '新密码不能与旧密码相同' };
+      }
+
+      // --- 3. 验证旧密码 ---
+      const oldHash: string = await this.sha256(oldPassword);
+      if (oldHash !== user.passwordHash) {
+        return { ok: false, msg: '旧密码错误' };
+      }
+
+      // --- 4. 更新为新密码 ---
+      const newHash: string = await this.sha256(newPassword);
+      const success: boolean = await this.userDao.updatePassword(userId, newHash);
+      if (!success) {
+        return { ok: false, msg: '密码修改失败，请重试' };
+      }
+
+      // --- 5. 退出登录 ---
+      await AuthGuard.logout();
+
+      return { ok: true, msg: '密码修改成功，请重新登录' };
+    } catch (err) {
+      return { ok: false, msg: `修改密码异常: ${JSON.stringify(err)}` };
+    }
+  }
+
+  /**
    * Uint8Array → 十六进制字符串
    */
   private uint8ArrayToHex(arr: Uint8Array): string {
