@@ -1,0 +1,106 @@
+<h2>"我的" 页面设计</h2>
+<p class="subtitle">当前是占位符，需要实现修改密码和退出登录功能</p>
+
+<div class="split">
+  <!-- 当前状态 -->
+  <div class="mockup">
+    <div class="mockup-header">当前：占位符</div>
+    <div class="mockup-body" style="padding: 40px; text-align: center; background: #fafafa;">
+      <div style="font-size: 48px; margin-bottom: 16px;">👤</div>
+      <div style="font-size: 16px; color: #999;">设置功能即将开放</div>
+      <div style="margin-top: 24px; padding: 12px; background: #FFF3E0; border-radius: 8px; font-size: 12px; color: #E65100;">
+        ⚠️ 无任何功能，只是占位
+      </div>
+    </div>
+  </div>
+
+  <!-- 设计方案 -->
+  <div class="mockup">
+    <div class="mockup-header">设计：功能完善的"我的"页</div>
+    <div class="mockup-body" style="background: #fafafa;">
+      <!-- 用户信息卡片 -->
+      <div style="background: #FF6347; color: white; padding: 24px 20px; text-align: center; border-radius: 0 0 16px 16px;">
+        <div style="font-size: 48px; margin-bottom: 8px;">👤</div>
+        <div style="font-size: 18px; font-weight: bold;">用户名</div>
+        <div style="font-size: 13px; opacity: 0.85; margin-top: 4px;">已登录</div>
+      </div>
+
+      <!-- 功能列表 -->
+      <div style="padding: 16px;">
+        <div style="background: white; border-radius: 12px; overflow: hidden;">
+          <!-- 修改密码入口 -->
+          <div style="padding: 16px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; cursor: pointer;">
+            <span style="font-size: 20px; margin-right: 12px;">🔑</span>
+            <div style="flex: 1;">
+              <div style="font-size: 15px; font-weight: 500;">修改密码</div>
+              <div style="font-size: 12px; color: #999;">验证旧密码后设置新密码</div>
+            </div>
+            <span style="color: #ccc;">➤</span>
+          </div>
+
+          <!-- 退出登录入口 -->
+          <div style="padding: 16px; display: flex; align-items: center; cursor: pointer;">
+            <span style="font-size: 20px; margin-right: 12px;">🚪</span>
+            <div style="flex: 1;">
+              <div style="font-size: 15px; font-weight: 500;">退出登录</div>
+              <div style="font-size: 12px; color: #999;">退出当前帐号</div>
+            </div>
+            <span style="color: #ccc;">➤</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>密码修改流程</h3>
+  <p class="subtitle">三步验证流程</p>
+
+  <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 160px; background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; text-align: center;">
+      <div style="font-size: 28px; margin-bottom: 8px;">1️⃣</div>
+      <div style="font-weight: bold; margin-bottom: 4px;">输入旧密码</div>
+      <div style="font-size: 12px; color: #666;">验证当前身份</div>
+      <div style="margin-top: 8px; background: #f5f5f5; border-radius: 4px; padding: 4px;">••••••</div>
+    </div>
+
+    <div style="flex: 1; min-width: 160px; background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; text-align: center;">
+      <div style="font-size: 28px; margin-bottom: 8px;">2️⃣</div>
+      <div style="font-weight: bold; margin-bottom: 4px;">输入新密码</div>
+      <div style="font-size: 12px; color: #666;">≥ 6 位字符</div>
+      <div style="margin-top: 8px; background: #f5f5f5; border-radius: 4px; padding: 4px;">••••••</div>
+    </div>
+
+    <div style="flex: 1; min-width: 160px; background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; text-align: center;">
+      <div style="font-size: 28px; margin-bottom: 8px;">3️⃣</div>
+      <div style="font-weight: bold; margin-bottom: 4px;">确认新密码</div>
+      <div style="font-size: 12px; color: #666;">再次输入以确认</div>
+      <div style="margin-top: 8px; background: #f5f5f5; border-radius: 4px; padding: 4px;">••••••</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>交互细节</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>设计要点</h4>
+      <ul>
+        <li>旧密码错误时弹出提示，不清空已输入的新密码</li>
+        <li>两次新密码不一致时实时提示</li>
+        <li>修改成功后 Toast 提示，自动跳转登录页</li>
+        <li>退出登录前弹确认对话框防止误触</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>边界情况</h4>
+      <ul>
+        <li>新密码与旧密码相同时应提示</li>
+        <li>网络/数据库异常时给出友好提示</li>
+        <li>所有输入框为空时按钮不可用</li>
+        <li>Loading 态防止重复提交</li>
+      </ul>
+    </div>
+  </div>
+</div>

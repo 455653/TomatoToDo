@@ -10,6 +10,7 @@ import { CollectionViewModel, PRESET_COLORS } from '../viewmodel/CollectionViewM
 import { TaskCard } from '../components/TaskCard';
 import { AiDrawerContent } from '../components/AiDrawer';
 import { SessionDao } from '../database/SessionDao';
+import { AuthGuard } from '../utils/AuthGuard';
 
 /** 任务数据变更事件 ID（通知今日/专注页面刷新） */
 const EVENT_TASK_CHANGED = 2001;
@@ -465,11 +466,23 @@ export struct TaskPage {
   @State taskFocusMap: Map<number, number> = new Map();
 
   /** 当前选中的合集（null = 合集列表视图） */
-  @State selectedCollection: Collection | null = null;
+  @State @Watch('syncSelectedCollectionToStorage') selectedCollection: Collection | null = null;
+
+  /**
+   * 同步当前选中合集 ID 到 AppStorage，供 AiDrawerContent 通过 @StorageLink 读取。
+   * 绕过 bindSheet 缓存导致的 @Prop/回调闭包过时问题。
+   */
+  private syncSelectedCollectionToStorage(): void {
+    const newId = this.selectedCollection?.id ?? 0;
+    console.log(`[TaskPage] syncSelectedCollectionToStorage - selectedCollection: ${this.selectedCollection?.name ?? 'null'}, id: ${newId}`);
+    AppStorage.setOrCreate('aiSelectedCollectionId', newId);
+  }
   /** 正在编辑的合集（用于弹窗区分新建/编辑模式） */
   @State editingCollection: Collection | null = null;
 
   async aboutToAppear(): Promise<void> {
+    // 初始化 AI 抽屉所需的 AppStorage 键（@StorageLink 需键预先存在）
+    AppStorage.setOrCreate('aiSelectedCollectionId', 0);
     await this.loadAllData();
   }
 
@@ -555,6 +568,12 @@ export struct TaskPage {
   buildCollectionGrid() {
     Scroll() {
       Grid() {
+        // "未分类" 卡片——展示所有未归属合集的任务（包括 AI 拆解导入时未选合集的任务）
+        if (this.getCollectionTaskCount(0) > 0) {
+          GridItem() {
+            this.buildUncategorizedCard()
+          }
+        }
         ForEach(this.collections, (col: Collection) => {
           GridItem() {
             this.buildCollectionCard(col)
@@ -601,6 +620,35 @@ export struct TaskPage {
     )
   }
 
+  /**
+   * "未分类" 任务卡片——固定在合集网格最前
+   * 点击进入查看所有未归属合集的任务（含 AI 拆解导入时未选中合集的任务）
+   */
+  @Builder
+  buildUncategorizedCard() {
+    Stack({ alignContent: Alignment.TopEnd }) {
+      Column() {
+        Column()
+          .width('100%').height(6).backgroundColor('#999999')
+          .borderRadius({ topLeft: 12, topRight: 12 })
+        Column() {
+          Text('未分类')
+            .fontSize(17).fontWeight(FontWeight.Bold).fontColor('#333333')
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%').margin({ bottom: 6 })
+          Text(`${this.getCollectionTaskCount(0)} 个任务`)
+            .fontSize(12).fontColor('#999999').width('100%')
+        }
+        .width('100%').padding({ left: 14, right: 14, top: 12, bottom: 14 })
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('100%').backgroundColor('#FFFFFF').borderRadius(12)
+      .onClick(() => { this.enterUncategorized(); })
+      // 未分类卡片没有编辑和删除入口，仅展示
+    }
+    .width('100%')
+  }
+
   @Builder
   buildCollectionEmptyState() {
     Column() {
@@ -641,13 +689,16 @@ export struct TaskPage {
           .fontSize(20).fontWeight(FontWeight.Bold).fontColor('#333333')
       }
       Blank()
-      Text('⚙')
-        .fontSize(22).fontColor('#999999')
-        .onClick(() => {
-          if (this.selectedCollection) {
-            this.showCollectionDialog(this.selectedCollection);
-          }
-        })
+      // 未分类（id=0）是虚拟合集，不显示编辑入口
+      if (this.selectedCollection && this.selectedCollection!.id > 0) {
+        Text('⚙')
+          .fontSize(22).fontColor('#999999')
+          .onClick(() => {
+            if (this.selectedCollection) {
+              this.showCollectionDialog(this.selectedCollection);
+            }
+          })
+      }
     }
     .width('100%').padding({ left: 20, right: 20, top: 16, bottom: 8 })
     .backgroundColor('#FFFFFF')
@@ -747,6 +798,30 @@ export struct TaskPage {
       this.isLoading = true;
       this.selectedCollection = col;
       await this.taskViewModel.loadTasksByCollection(col.id);
+      await this.syncFromViewModel();
+    } catch (err) {
+      promptAction.showToast({ message: `加载失败: ${JSON.stringify(err)}`, duration: 2000 });
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  /**
+   * 进入"未分类"任务视图（使用虚拟合集对象，id=0 表示未分类）
+   */
+  private async enterUncategorized(): Promise<void> {
+    try {
+      this.isLoading = true;
+      // 构建虚拟合集对象，id=0 即未分类
+      const uncategorized: Collection = {
+        id: 0,
+        userId: AuthGuard.getCurrentUserId(),
+        name: '未分类',
+        color: '#999999',
+        createdAt: 0,
+      };
+      this.selectedCollection = uncategorized;
+      await this.taskViewModel.loadTasksByCollection(0);
       await this.syncFromViewModel();
     } catch (err) {
       promptAction.showToast({ message: `加载失败: ${JSON.stringify(err)}`, duration: 2000 });

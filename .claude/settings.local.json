@@ -4,7 +4,9 @@
       "Bash(mkdir -p \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/database\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/model\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/utils\" \"d:/AllProjectCode/APPcode/TomatoToDo/entry/src/main/ets/viewmodel\")",
       "Bash(git init *)",
       "Bash(git commit *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Read(//c/Users/莫国烽/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/**)",
+      "Bash(bash \"C:/Users/莫国烽/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/skills/brainstorming/scripts/start-server.sh\" --project-dir \"d:/AllProjectCode/APPcode/TomatoToDo\")"
     ],
     "additionalDirectories": [
       "d:\\AllProjectCode\\APPcode\\TomatoToDo\\entry\\src\\main\\ets"
